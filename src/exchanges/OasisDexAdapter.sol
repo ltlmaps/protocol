@@ -8,6 +8,7 @@ import "../dependencies/DSMath.sol";
 import "./interfaces/IOasisDex.sol";
 import "./ExchangeAdapter.sol";
 
+
 /// @title OasisDexAdapter Contract
 /// @author Melonport AG <team@melonport.com>
 /// @notice Adapter between Melon and OasisDex Matching Market

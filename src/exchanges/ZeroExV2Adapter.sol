@@ -10,6 +10,7 @@ import "../dependencies/DSMath.sol";
 import "./interfaces/IZeroExV2.sol";
 import "./ExchangeAdapter.sol";
 
+
 /// @title ZeroExV2Adapter Contract
 /// @author Melonport AG <team@melonport.com>
 /// @notice Adapter to 0xV2 Exchange Contract
@@ -31,7 +32,12 @@ contract ZeroExV2Adapter is DSMath, ExchangeAdapter {
     ) public onlyManager notShutDown {
         ensureCanMakeOrder(orderAddresses[2]);
         Hub hub = getHub();
-        IZeroExV2.Order memory order = constructOrderStruct(orderAddresses, orderValues, makerAssetData, takerAssetData);
+        IZeroExV2.Order memory order = constructOrderStruct(
+            orderAddresses,
+            orderValues,
+            makerAssetData,
+            takerAssetData
+        );
         address makerAsset = getAssetAddress(makerAssetData);
         address takerAsset = getAssetAddress(takerAssetData);
         require(
@@ -68,10 +74,10 @@ contract ZeroExV2Adapter is DSMath, ExchangeAdapter {
             [order.makerAssetAmount, order.takerAssetAmount, uint(0)]
         );
         getTrading().addOpenMakeOrder(
-            targetExchange, 
+            targetExchange,
             makerAsset,
             takerAsset,
-            uint256(orderInfo.orderHash), 
+            uint256(orderInfo.orderHash),
             order.expirationTimeSeconds
         );
         getTrading().addZeroExOrderData(orderInfo.orderHash, order);
@@ -120,7 +126,12 @@ contract ZeroExV2Adapter is DSMath, ExchangeAdapter {
     ) public onlyManager notShutDown {
         Hub hub = getHub();
 
-        IZeroExV2.Order memory order = constructOrderStruct(orderAddresses, orderValues, makerAssetData, takerAssetData);
+        IZeroExV2.Order memory order = constructOrderStruct(
+            orderAddresses,
+            orderValues,
+            makerAssetData,
+            takerAssetData
+        );
         uint fillTakerQuantity = orderValues[6];
         address makerAsset = getAssetAddress(makerAssetData);
         address takerAsset = getAssetAddress(takerAssetData);
@@ -134,7 +145,8 @@ contract ZeroExV2Adapter is DSMath, ExchangeAdapter {
         );
         approveTakerAsset(targetExchange, takerAsset, takerAssetData, fillTakerQuantity);
         IZeroExV2.OrderInfo memory orderInfo = IZeroExV2(targetExchange).getOrderInfo(order);
-        uint takerAssetFilledAmount = executeFill(targetExchange, order, fillTakerQuantity, signature);
+        uint takerAssetFilledAmount =
+            executeFill(targetExchange, order, fillTakerQuantity, signature);
 
         require(
             takerAssetFilledAmount == fillTakerQuantity,
@@ -196,10 +208,12 @@ contract ZeroExV2Adapter is DSMath, ExchangeAdapter {
         uint makerQuantity;
         uint takerQuantity;
         (orderId, , orderIndex) = Trading(msg.sender).getOpenOrderInfo(targetExchange, makerAsset);
-        (, takerAsset, makerQuantity, takerQuantity) = Trading(msg.sender).getOrderDetails(orderIndex);
+        (, takerAsset, makerQuantity, takerQuantity) =
+            Trading(msg.sender).getOrderDetails(orderIndex);
         uint takerAssetFilledAmount = IZeroExV2(targetExchange).filled(bytes32(orderId));
         uint makerAssetFilledAmount = mul(takerAssetFilledAmount, makerQuantity) / takerQuantity;
-        if (IZeroExV2(targetExchange).cancelled(bytes32(orderId)) || sub(takerQuantity, takerAssetFilledAmount) == 0) {
+        if (IZeroExV2(targetExchange).cancelled(bytes32(orderId))
+            || sub(takerQuantity, takerAssetFilledAmount) == 0) {
             return (makerAsset, takerAsset, 0, 0);
         }
         return (
@@ -212,9 +226,13 @@ contract ZeroExV2Adapter is DSMath, ExchangeAdapter {
 
     // INTERNAL METHODS
 
-
     /// @notice needed to avoid stack too deep error
-    function approveTakerAsset(address targetExchange, address takerAsset, bytes memory takerAssetData, uint256 fillTakerQuantity)
+    function approveTakerAsset(
+        address targetExchange,
+        address takerAsset,
+        bytes memory takerAssetData,
+        uint256 fillTakerQuantity
+    )
         internal
     {
         Hub hub = getHub();
@@ -228,7 +246,12 @@ contract ZeroExV2Adapter is DSMath, ExchangeAdapter {
     }
 
     /// @notice needed to avoid stack too deep error
-    function approveMakerAsset(address targetExchange, address makerAsset, bytes memory makerAssetData, uint256 makerQuantity)
+    function approveMakerAsset(
+        address targetExchange,
+        address makerAsset,
+        bytes memory makerAssetData,
+        uint256 makerQuantity
+    )
         internal
     {
         Hub hub = getHub();

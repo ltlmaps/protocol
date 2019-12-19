@@ -7,6 +7,7 @@ import "../version/IVersion.sol";
 import "./IEngine.sol";
 import "../version/Registry.sol";
 
+
 /// @notice Abstract contracts
 /// @notice inherit this to pay AMGU on a function call
 contract AmguConsumer is DSMath {

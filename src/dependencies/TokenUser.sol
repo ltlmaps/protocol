@@ -3,6 +3,7 @@ pragma solidity 0.5.15;
 import "./token/IERC20.sol";
 import "./DSMath.sol";
 
+
 /// @notice Wrapper to ensure tokens are received
 contract TokenUser is DSMath {
     function safeTransfer(
@@ -32,6 +33,6 @@ contract TokenUser is DSMath {
             add(receiverPreBalance, _value) == receiverPostBalance,
             "Receiver did not receive tokens in transferFrom"
         );
- 
+
     }
 }

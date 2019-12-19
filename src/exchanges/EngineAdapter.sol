@@ -10,6 +10,7 @@ import "../dependencies/token/IERC20.sol";
 import "./ExchangeAdapter.sol";
 import "../dependencies/TokenUser.sol";
 
+
 /// @notice Trading adapter to Melon Engine
 contract EngineAdapter is DSMath, TokenUser, ExchangeAdapter {
 
@@ -36,13 +37,13 @@ contract EngineAdapter is DSMath, TokenUser, ExchangeAdapter {
         uint minEthToReceive = orderValues[0];
         uint mlnQuantity = orderValues[1];
 
-        require(	
-            wethAddress == Registry(hub.registry()).nativeAsset(),	
-            "maker asset doesnt match nativeAsset on registry"	
+        require(
+            wethAddress == Registry(hub.registry()).nativeAsset(),
+            "maker asset doesnt match nativeAsset on registry"
         );
-        require(	
-            orderValues[1] == orderValues[6],	
-            "fillTakerQuantity must equal takerAssetQuantity"	
+        require(
+            orderValues[1] == orderValues[6],
+            "fillTakerQuantity must equal takerAssetQuantity"
         );
 
         Vault vault = Vault(hub.vault());
@@ -53,16 +54,16 @@ contract EngineAdapter is DSMath, TokenUser, ExchangeAdapter {
         );
 
         uint ethToReceive = Engine(targetExchange).ethPayoutForMlnAmount(mlnQuantity);
-    
+
         require(
             ethToReceive >= minEthToReceive,
             "Expected ETH to receive is less than takerQuantity (minEthToReceive)"
         );
-        
+
         Engine(targetExchange).sellAndBurnMln(mlnQuantity);
         WETH(address(uint160(wethAddress))).deposit.value(ethToReceive)();
         safeTransfer(wethAddress, address(vault), ethToReceive);
-  
+
         getAccounting().addAssetToOwnedAssets(wethAddress);
         getAccounting().updateOwnedAssets();
         getTrading().orderUpdateHook(

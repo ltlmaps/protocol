@@ -13,6 +13,7 @@ import "./interfaces/IZeroExV2.sol";
 import "./interfaces/IEthfinex.sol";
 import "./ExchangeAdapter.sol";
 
+
 /// @title EthfinexAdapter Contract
 /// @author Melonport AG <team@melonport.com>
 /// @notice Adapter to EthFinex exchange
@@ -35,7 +36,12 @@ contract EthfinexAdapter is DSMath, ExchangeAdapter {
         ensureCanMakeOrder(orderAddresses[2]);
         Hub hub = getHub();
 
-        IZeroExV2.Order memory order = constructOrderStruct(orderAddresses, orderValues, wrappedMakerAssetData, takerAssetData);
+        IZeroExV2.Order memory order = constructOrderStruct(
+            orderAddresses,
+            orderValues,
+            wrappedMakerAssetData,
+            takerAssetData
+        );
         address makerAsset = orderAddresses[2];
         address takerAsset = getAssetAddress(takerAssetData);
         require(
@@ -46,7 +52,13 @@ contract EthfinexAdapter is DSMath, ExchangeAdapter {
         getTrading().updateAndGetQuantityBeingTraded(makerAsset);
         ensureNotInOpenMakeOrder(makerAsset);
 
-        wrapMakerAsset(targetExchange, makerAsset, wrappedMakerAssetData, order.makerAssetAmount, order.expirationTimeSeconds);
+        wrapMakerAsset(
+            targetExchange,
+            makerAsset,
+            wrappedMakerAssetData,
+            order.makerAssetAmount,
+            order.expirationTimeSeconds
+        );
         IZeroExV2.OrderInfo memory orderInfo = IZeroExV2(targetExchange).getOrderInfo(order);
         IZeroExV2(targetExchange).preSign(orderInfo.orderHash, address(this), signature);
 
@@ -67,10 +79,10 @@ contract EthfinexAdapter is DSMath, ExchangeAdapter {
             [order.makerAssetAmount, order.takerAssetAmount, uint(0)]
         );
         getTrading().addOpenMakeOrder(
-            targetExchange, 
+            targetExchange,
             makerAsset,
             takerAsset,
-            uint256(orderInfo.orderHash), 
+            uint256(orderInfo.orderHash),
             order.expirationTimeSeconds
         );
         getTrading().addZeroExOrderData(orderInfo.orderHash, order);
@@ -142,7 +154,8 @@ contract EthfinexAdapter is DSMath, ExchangeAdapter {
         uint makerQuantity;
         uint takerQuantity;
         (orderId, , orderIndex) = Trading(msg.sender).getOpenOrderInfo(targetExchange, makerAsset);
-        (, takerAsset, makerQuantity, takerQuantity) = Trading(msg.sender).getOrderDetails(orderIndex);
+        (, takerAsset, makerQuantity, takerQuantity) =
+            Trading(msg.sender).getOrderDetails(orderIndex);
 
         // Check if order has been completely filled
         uint takerAssetFilledAmount = IZeroExV2(targetExchange).filled(bytes32(orderId));
@@ -151,7 +164,8 @@ contract EthfinexAdapter is DSMath, ExchangeAdapter {
         }
 
         // Check if tokens have been withdrawn (cancelled order may still need to be accounted if there is balance)
-        uint balance = IWrapperLock(getWrapperTokenFromAdapterContext(makerAsset)).balanceOf(msg.sender);
+        uint balance =
+            IWrapperLock(getWrapperTokenFromAdapterContext(makerAsset)).balanceOf(msg.sender);
         if (balance == 0) {
             return (makerAsset, takerAsset, 0, 0);
         }
@@ -162,7 +176,13 @@ contract EthfinexAdapter is DSMath, ExchangeAdapter {
 
     /// @notice needed to avoid stack too deep error
     /// @dev deposit time should be greater than 1 hour
-    function wrapMakerAsset(address targetExchange, address makerAsset, bytes memory wrappedMakerAssetData, uint makerQuantity, uint orderExpirationTime)
+    function wrapMakerAsset(
+        address targetExchange,
+        address makerAsset,
+        bytes memory wrappedMakerAssetData,
+        uint makerQuantity,
+        uint orderExpirationTime
+    )
         internal
     {
         Hub hub = getHub();
@@ -258,7 +278,8 @@ contract EthfinexAdapter is DSMath, ExchangeAdapter {
         view
         returns (address wrapperToken)
     {
-        address wrapperRegistry = Registry(Trading(msg.sender).registry()).ethfinexWrapperRegistry();
+        address wrapperRegistry =
+            Registry(Trading(msg.sender).registry()).ethfinexWrapperRegistry();
         return IWrapperRegistryEFX(wrapperRegistry).token2WrapperLookup(token);
     }
 }

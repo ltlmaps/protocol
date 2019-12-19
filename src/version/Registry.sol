@@ -4,6 +4,7 @@ import "../dependencies/DSAuth.sol";
 import "../fund/hub/Hub.sol";
 import "../dependencies/token/IERC20.sol";
 
+
 contract Registry is DSAuth {
 
     // EVENTS
@@ -98,44 +99,8 @@ contract Registry is DSAuth {
         _;
     }
 
-    // METHODS
-
     constructor(address _postDeployOwner) public {
         setOwner(_postDeployOwner);
-    }
-
-    // PUBLIC METHODS
-
-    /// @notice Whether _name has only valid characters
-    function isValidFundName(string memory _name) public pure returns (bool) {
-        bytes memory b = bytes(_name);
-        if (b.length > MAX_FUND_NAME_BYTES) return false;
-        for (uint i; i < b.length; i++){
-            bytes1 char = b[i];
-            if(
-                !(char >= 0x30 && char <= 0x39) && // 9-0
-                !(char >= 0x41 && char <= 0x5A) && // A-Z
-                !(char >= 0x61 && char <= 0x7A) && // a-z
-                !(char == 0x20 || char == 0x2D) && // space, dash
-                !(char == 0x2E || char == 0x5F) && // period, underscore
-                !(char == 0x2A) // *
-            ) {
-                return false;
-            }
-        }
-        return true;
-    }
-
-    /// @notice Whether _user can use _name for their fund
-    function canUseFundName(address _user, string memory _name) public view returns (bool) {
-        bytes32 nameHash = keccak256(bytes(_name));
-        return (
-            isValidFundName(_name) &&
-            (
-                fundNameHashToOwner[nameHash] == address(0) ||
-                fundNameHashToOwner[nameHash] == _user
-            )
-        );
     }
 
     function reserveFundName(address _owner, string calldata _name)
@@ -264,6 +229,148 @@ contract Registry is DSAuth {
         emit EfxWrapperRegistryChange(_registry);
     }
 
+    /// @notice Deletes an existing entry
+    /// @dev Owner can delete an existing entry
+    /// @param _asset address for which specific information is requested
+    function removeAsset(
+        address _asset,
+        uint _assetIndex
+    ) external auth {
+        require(assetInformation[_asset].exists);
+        require(registeredAssets[_assetIndex] == _asset);
+        delete assetInformation[_asset];
+        delete registeredAssets[_assetIndex];
+        for (uint i = _assetIndex; i < registeredAssets.length-1; i++) {
+            registeredAssets[i] = registeredAssets[i+1];
+        }
+        registeredAssets.length--;
+        emit AssetRemoval(_asset);
+    }
+
+    /// @notice Deletes an existing entry
+    /// @dev Owner can delete an existing entry
+    /// @param _adapter address of the adapter of the exchange that is to be removed
+    /// @param _adapterIndex index of the exchange in array
+    function removeExchangeAdapter(
+        address _adapter,
+        uint _adapterIndex
+    ) external auth {
+        require(exchangeInformation[_adapter].exists, "Exchange with adapter doesn't exist");
+        require(registeredExchangeAdapters[_adapterIndex] == _adapter, "Incorrect adapter index");
+        delete exchangeInformation[_adapter];
+        delete registeredExchangeAdapters[_adapterIndex];
+        for (uint i = _adapterIndex; i < registeredExchangeAdapters.length-1; i++) {
+            registeredExchangeAdapters[i] = registeredExchangeAdapters[i+1];
+        }
+        registeredExchangeAdapters.length--;
+        emit ExchangeAdapterRemoval(_adapter);
+    }
+
+    function registerFees(address[] calldata _fees) external auth {
+        for (uint i; i < _fees.length; i++) {
+            isFeeRegistered[_fees[i]] = true;
+        }
+    }
+
+    function deregisterFees(address[] calldata _fees) external auth {
+        for (uint i; i < _fees.length; i++) {
+            delete isFeeRegistered[_fees[i]];
+        }
+    }
+
+    // PUBLIC VIEW METHODS
+
+    // get asset specific information
+    function getName(address _asset) external view returns (string memory) {
+        return assetInformation[_asset].name;
+    }
+
+    function getSymbol(address _asset) external view returns (string memory) {
+        return assetInformation[_asset].symbol;
+    }
+
+    function getDecimals(address _asset) external view returns (uint) {
+        return assetInformation[_asset].decimals;
+    }
+
+    function getReserveMin(address _asset) external view returns (uint) {
+        return assetInformation[_asset].reserveMin;
+    }
+
+    function assetIsRegistered(address _asset) external view returns (bool) {
+        return assetInformation[_asset].exists;
+    }
+
+    function getRegisteredAssets() external view returns (address[] memory) {
+        return registeredAssets;
+    }
+
+    function assetMethodIsAllowed(address _asset, bytes4 _sig)
+        external
+        view
+        returns (bool)
+    {
+        bytes4[] memory signatures = assetInformation[_asset].sigs;
+        for (uint i = 0; i < signatures.length; i++) {
+            if (signatures[i] == _sig) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    // get exchange-specific information
+    function exchangeAdapterIsRegistered(address _adapter) external view returns (bool) {
+        return exchangeInformation[_adapter].exists;
+    }
+
+    function getRegisteredExchangeAdapters() external view returns (address[] memory) {
+        return registeredExchangeAdapters;
+    }
+
+    function exchangeForAdapter(address _adapter) external view returns (address) {
+        Exchange memory exchange = exchangeInformation[_adapter];
+        return exchange.exchangeAddress;
+    }
+
+    function adapterMethodIsAllowed(
+        address _adapter, bytes4 _sig
+    )
+        external
+        view
+        returns (bool)
+    {
+        bytes4[] memory signatures = exchangeInformation[_adapter].sigs;
+        for (uint i = 0; i < signatures.length; i++) {
+            if (signatures[i] == _sig) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    // get version and fund information
+    function getRegisteredVersions() external view returns (address[] memory) {
+        return registeredVersions;
+    }
+
+    function isFund(address _who) external view returns (bool) {
+        if (fundsToVersions[_who] != address(0)) {
+            return true; // directly from a hub
+        } else {
+            Hub hub = Hub(Spoke(_who).hub());
+            require(
+                hub.isSpoke(_who),
+                "Call from either a spoke or hub"
+            );
+            return fundsToVersions[address(hub)] != address(0);
+        }
+    }
+
+    function isFundFactory(address _who) external view returns (bool) {
+        return versionInformation[_who].exists;
+    }
+
     /// @notice Updates description information of a registered Asset
     /// @dev Pre: Owner can change an existing entry
     /// @dev Post: Changed Name, Symbol, URL and/or IPFSHash
@@ -320,97 +427,48 @@ contract Registry is DSAuth {
         );
     }
 
-    /// @notice Deletes an existing entry
-    /// @dev Owner can delete an existing entry
-    /// @param _asset address for which specific information is requested
-    function removeAsset(
-        address _asset,
-        uint _assetIndex
-    ) external auth {
-        require(assetInformation[_asset].exists);
-        require(registeredAssets[_assetIndex] == _asset);
-        delete assetInformation[_asset];
-        delete registeredAssets[_assetIndex];
-        for (uint i = _assetIndex; i < registeredAssets.length-1; i++) {
-            registeredAssets[i] = registeredAssets[i+1];
-        }
-        registeredAssets.length--;
-        emit AssetRemoval(_asset);
-    }
+    // PUBLIC METHODS
 
-    /// @notice Deletes an existing entry
-    /// @dev Owner can delete an existing entry
-    /// @param _adapter address of the adapter of the exchange that is to be removed
-    /// @param _adapterIndex index of the exchange in array
-    function removeExchangeAdapter(
-        address _adapter,
-        uint _adapterIndex
-    ) external auth {
-        require(exchangeInformation[_adapter].exists, "Exchange with adapter doesn't exist");
-        require(registeredExchangeAdapters[_adapterIndex] == _adapter, "Incorrect adapter index");
-        delete exchangeInformation[_adapter];
-        delete registeredExchangeAdapters[_adapterIndex];
-        for (uint i = _adapterIndex; i < registeredExchangeAdapters.length-1; i++) {
-            registeredExchangeAdapters[i] = registeredExchangeAdapters[i+1];
-        }
-        registeredExchangeAdapters.length--;
-        emit ExchangeAdapterRemoval(_adapter);
-    }
-
-    function registerFees(address[] calldata _fees) external auth {
-        for (uint i; i < _fees.length; i++) {
-            isFeeRegistered[_fees[i]] = true;
-        }
-    }
-
-    function deregisterFees(address[] calldata _fees) external auth {
-        for (uint i; i < _fees.length; i++) {
-            delete isFeeRegistered[_fees[i]];
-        }
-    }
-
-    // PUBLIC VIEW METHODS
-
-    // get asset specific information
-    function getName(address _asset) external view returns (string memory) {
-        return assetInformation[_asset].name;
-    }
-    function getSymbol(address _asset) external view returns (string memory) {
-        return assetInformation[_asset].symbol;
-    }
-    function getDecimals(address _asset) external view returns (uint) {
-        return assetInformation[_asset].decimals;
-    }
-    function getReserveMin(address _asset) external view returns (uint) {
-        return assetInformation[_asset].reserveMin;
-    }
-    function assetIsRegistered(address _asset) external view returns (bool) {
-        return assetInformation[_asset].exists;
-    }
-    function getRegisteredAssets() external view returns (address[] memory) {
-        return registeredAssets;
-    }
-    function assetMethodIsAllowed(address _asset, bytes4 _sig)
-        external
-        view
-        returns (bool)
-    {
-        bytes4[] memory signatures = assetInformation[_asset].sigs;
-        for (uint i = 0; i < signatures.length; i++) {
-            if (signatures[i] == _sig) {
-                return true;
+    /// @notice Whether _name has only valid characters
+    function isValidFundName(string memory _name) public pure returns (bool) {
+        bytes memory b = bytes(_name);
+        if (b.length > MAX_FUND_NAME_BYTES) return false;
+        for (uint i; i < b.length; i++){
+            bytes1 char = b[i];
+            if(
+                !(char >= 0x30 && char <= 0x39) && // 9-0
+                !(char >= 0x41 && char <= 0x5A) && // A-Z
+                !(char >= 0x61 && char <= 0x7A) && // a-z
+                !(char == 0x20 || char == 0x2D) && // space, dash
+                !(char == 0x2E || char == 0x5F) && // period, underscore
+                !(char == 0x2A) // *
+            ) {
+                return false;
             }
         }
-        return false;
+        return true;
     }
 
-    // get exchange-specific information
-    function exchangeAdapterIsRegistered(address _adapter) external view returns (bool) {
-        return exchangeInformation[_adapter].exists;
+    /// @notice Whether _user can use _name for their fund
+    function canUseFundName(address _user, string memory _name) public view returns (bool) {
+        bytes32 nameHash = keccak256(bytes(_name));
+        return (
+            isValidFundName(_name) &&
+            (
+                fundNameHashToOwner[nameHash] == address(0) ||
+                fundNameHashToOwner[nameHash] == _user
+            )
+        );
     }
-    function getRegisteredExchangeAdapters() external view returns (address[] memory) {
-        return registeredExchangeAdapters;
+
+    function getAdapterFunctionSignatures(address _adapter)
+        public
+        view
+        returns (bytes4[] memory)
+    {
+        return exchangeInformation[_adapter].sigs;
     }
+
     function getExchangeInformation(address _adapter)
         public
         view
@@ -421,54 +479,6 @@ contract Registry is DSAuth {
             exchange.exchangeAddress,
             exchange.takesCustody
         );
-    }
-    function exchangeForAdapter(address _adapter) external view returns (address) {
-        Exchange memory exchange = exchangeInformation[_adapter];
-        return exchange.exchangeAddress;
-    }
-    function getAdapterFunctionSignatures(address _adapter)
-        public
-        view
-        returns (bytes4[] memory)
-    {
-        return exchangeInformation[_adapter].sigs;
-    }
-    function adapterMethodIsAllowed(
-        address _adapter, bytes4 _sig
-    )
-        external
-        view
-        returns (bool)
-    {
-        bytes4[] memory signatures = exchangeInformation[_adapter].sigs;
-        for (uint i = 0; i < signatures.length; i++) {
-            if (signatures[i] == _sig) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    // get version and fund information
-    function getRegisteredVersions() external view returns (address[] memory) {
-        return registeredVersions;
-    }
-
-    function isFund(address _who) external view returns (bool) {
-        if (fundsToVersions[_who] != address(0)) {
-            return true; // directly from a hub
-        } else {
-            Hub hub = Hub(Spoke(_who).hub());
-            require(
-                hub.isSpoke(_who),
-                "Call from either a spoke or hub"
-            );
-            return fundsToVersions[address(hub)] != address(0);
-        }
-    }
-
-    function isFundFactory(address _who) external view returns (bool) {
-        return versionInformation[_who].exists;
     }
 }
 

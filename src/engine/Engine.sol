@@ -5,6 +5,7 @@ import "../dependencies/token/BurnableToken.sol";
 import "../prices/IPriceSource.sol";
 import "../version/Registry.sol";
 
+
 /// @notice Liquidity contract and token sink
 contract Engine is DSMath {
 
@@ -49,11 +50,6 @@ contract Engine is DSMath {
         _;
     }
 
-    function _setRegistry(address _registry) internal {
-        registry = Registry(_registry);
-        emit RegistryChange(address(registry));
-    }
-
     /// @dev only callable by MTC
     function setRegistry(address _registry)
         external
@@ -72,20 +68,6 @@ contract Engine is DSMath {
         emit SetAmguPrice(_price);
     }
 
-    function getAmguPrice() public view returns (uint) { return amguPrice; }
-
-    function premiumPercent() public view returns (uint) {
-        if (liquidEther < 1 ether) {
-            return 0;
-        } else if (liquidEther >= 1 ether && liquidEther < 5 ether) {
-            return 5;
-        } else if (liquidEther >= 5 ether && liquidEther < 10 ether) {
-            return 10;
-        } else if (liquidEther >= 10 ether) {
-            return 15;
-        }
-    }
-
     function payAmguInEther() external payable {
         require(
             registry.isFundFactory(msg.sender) ||
@@ -97,7 +79,8 @@ contract Engine is DSMath {
         (ethPerMln,) = priceSource().getPrice(address(mlnToken()));
         uint amguConsumed;
         if (mlnPerAmgu > 0 && ethPerMln > 0) {
-            amguConsumed = (mul(msg.value, 10 ** uint(MLN_DECIMALS))) / (mul(ethPerMln, mlnPerAmgu));
+            amguConsumed =
+                (mul(msg.value, 10 ** uint(MLN_DECIMALS))) / (mul(ethPerMln, mlnPerAmgu));
         } else {
             amguConsumed = 0;
         }
@@ -121,18 +104,6 @@ contract Engine is DSMath {
         frozenEther = 0;
     }
 
-    /// @return ETH per MLN including premium
-    function enginePrice() public view returns (uint) {
-        uint ethPerMln;
-        (ethPerMln, ) = priceSource().getPrice(address(mlnToken()));
-        uint premium = (mul(ethPerMln, premiumPercent()) / 100);
-        return add(ethPerMln, premium);
-    }
-
-    function ethPayoutForMlnAmount(uint mlnAmount) public view returns (uint) {
-        return mul(mlnAmount, enginePrice()) / 10 ** uint(MLN_DECIMALS);
-    }
-
     /// @notice MLN must be approved first
     function sellAndBurnMln(uint mlnAmount) external {
         require(registry.isFund(msg.sender), "Only funds can use the engine");
@@ -148,6 +119,32 @@ contract Engine is DSMath {
         msg.sender.transfer(ethToSend);
         mlnToken().burn(mlnAmount);
         emit Burn(mlnAmount);
+    }
+
+    function getAmguPrice() public view returns (uint) { return amguPrice; }
+
+    function premiumPercent() public view returns (uint) {
+        if (liquidEther < 1 ether) {
+            return 0;
+        } else if (liquidEther >= 1 ether && liquidEther < 5 ether) {
+            return 5;
+        } else if (liquidEther >= 5 ether && liquidEther < 10 ether) {
+            return 10;
+        } else if (liquidEther >= 10 ether) {
+            return 15;
+        }
+    }
+
+    /// @return ETH per MLN including premium
+    function enginePrice() public view returns (uint) {
+        uint ethPerMln;
+        (ethPerMln, ) = priceSource().getPrice(address(mlnToken()));
+        uint premium = (mul(ethPerMln, premiumPercent()) / 100);
+        return add(ethPerMln, premium);
+    }
+
+    function ethPayoutForMlnAmount(uint mlnAmount) public view returns (uint) {
+        return mul(mlnAmount, enginePrice()) / 10 ** uint(MLN_DECIMALS);
     }
 
     /// @dev Get MLN from the registry
@@ -166,6 +163,11 @@ contract Engine is DSMath {
         returns (IPriceSource)
     {
         return IPriceSource(registry.priceSource());
+    }
+
+    function _setRegistry(address _registry) internal {
+        registry = Registry(_registry);
+        emit RegistryChange(address(registry));
     }
 }
 

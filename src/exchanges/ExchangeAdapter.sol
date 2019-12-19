@@ -4,6 +4,7 @@ import "../fund/accounting/Accounting.sol";
 import "../fund/hub/Hub.sol";
 import "../fund/trading/Trading.sol";
 
+
 /// @title Exchange Adapter base contract
 /// @author Melonport AG <team@melonport.com>
 /// @notice Override the public methods to implement an adapter
@@ -34,40 +35,6 @@ contract ExchangeAdapter {
             "No cancellation condition met"
         );
         _;
-    }
-
-    function getTrading() internal view returns (Trading) {
-        return Trading(address(uint160(address(this))));
-    }
-
-    function getHub() internal view returns (Hub) {
-        return Hub(getTrading().hub());
-    }
-
-    function getAccounting() internal view returns (Accounting) {
-        return Accounting(getHub().accounting());
-    }
-
-    function hubShutDown() internal view returns (bool) {
-        return getHub().isShutDown();
-    }
-
-    function getManager() internal view returns (address) {
-        return getHub().manager();
-    }
-
-    function ensureNotInOpenMakeOrder(address _asset) internal view {
-        require(
-            !getTrading().isInOpenMakeOrder(_asset),
-            "This asset is already in an open make order"
-        );
-    }
-
-    function ensureCanMakeOrder(address _asset) internal view {
-        require(
-            block.timestamp >= getTrading().makerAssetCooldown(_asset),
-            "Cooldown for the maker asset not reached"
-        );
     }
 
     /// @param orderAddresses [0] Order maker
@@ -163,4 +130,38 @@ contract ExchangeAdapter {
         uint,
         uint
     ) { revert("Unimplemented"); }
+
+    function getTrading() internal view returns (Trading) {
+        return Trading(address(uint160(address(this))));
+    }
+
+    function getHub() internal view returns (Hub) {
+        return Hub(getTrading().hub());
+    }
+
+    function getAccounting() internal view returns (Accounting) {
+        return Accounting(getHub().accounting());
+    }
+
+    function hubShutDown() internal view returns (bool) {
+        return getHub().isShutDown();
+    }
+
+    function getManager() internal view returns (address) {
+        return getHub().manager();
+    }
+
+    function ensureNotInOpenMakeOrder(address _asset) internal view {
+        require(
+            !getTrading().isInOpenMakeOrder(_asset),
+            "This asset is already in an open make order"
+        );
+    }
+
+    function ensureCanMakeOrder(address _asset) internal view {
+        require(
+            block.timestamp >= getTrading().makerAssetCooldown(_asset),
+            "Cooldown for the maker asset not reached"
+        );
+    }
 }

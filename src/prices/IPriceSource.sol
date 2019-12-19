@@ -1,5 +1,6 @@
 pragma solidity 0.5.15;
 
+
 /// @notice Must return a value for an asset
 interface IPriceSource {
     function getQuoteAsset() external view returns (address);

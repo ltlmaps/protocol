@@ -13,6 +13,7 @@ import "../version/IVersion.sol";
 import "../engine/AmguConsumer.sol";
 import "./Factory.sol";
 
+
 /// @notice Creates fund routes and links them together
 contract FundFactory is AmguConsumer, Factory {
 
@@ -85,10 +86,6 @@ contract FundFactory is AmguConsumer, Factory {
         vaultFactory = IVaultFactory(_vaultFactory);
         policyManagerFactory = IPolicyManagerFactory(_policyManagerFactory);
         version = IVersion(_version);
-    }
-
-    function componentExists(address _component) internal pure returns (bool) {
-        return _component != address(0);
     }
 
     function beginSetup(
@@ -288,20 +285,29 @@ contract FundFactory is AmguConsumer, Factory {
     }
 
     function getFundById(uint withId) external view returns (address) { return funds[withId]; }
+
     function getLastFundId() external view returns (uint) { return funds.length - 1; }
 
     function mlnToken() public view returns (address) {
         return address(associatedRegistry.mlnToken());
     }
+
     function engine() public view returns (address) {
         return address(associatedRegistry.engine());
     }
+
     function priceSource() public view returns (address) {
         return address(associatedRegistry.priceSource());
     }
+
     function registry() public view returns (address) { return address(associatedRegistry); }
+
     function getExchangesInfo(address user) public view returns (address[] memory) {
         return (managersToSettings[user].exchanges);
+    }
+
+    function componentExists(address _component) internal pure returns (bool) {
+        return _component != address(0);
     }
 }
 

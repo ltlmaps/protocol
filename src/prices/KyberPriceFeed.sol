@@ -6,6 +6,7 @@ import "../dependencies/DSAuth.sol"; // TODO: remove? this may not be used at al
 import "../exchanges/interfaces/IKyberNetworkProxy.sol";
 import "../version/Registry.sol";
 
+
 /// @title Price Feed Template
 /// @author Melonport AG <team@melonport.com>
 /// @notice Routes external data to smart contracts
