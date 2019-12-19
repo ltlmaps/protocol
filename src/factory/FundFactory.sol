@@ -98,7 +98,7 @@ contract FundFactory is AmguConsumer, Factory {
         address _denominationAsset,
         address[] memory _defaultAssets
     )
-        public
+        external
         componentNotSet(managersToHubs[msg.sender])
     {
         associatedRegistry.reserveFundName(
