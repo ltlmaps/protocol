@@ -175,6 +175,10 @@ contract ExchangeAdapter is DSMath {
         bytes memory signature
     ) public virtual { revert("Unimplemented"); }
 
+    function testTakeOrder(
+        bytes memory _encodedExchangeParameters
+    ) public virtual { revert("Unimplemented"); }
+
     // responsibilities of cancelOrder are:
     // - check sender is owner, or that order expired, or that fund shut down
     // - remove order from tracking array

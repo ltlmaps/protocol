@@ -143,6 +143,52 @@ contract ZeroExV2Adapter is DSMath, ExchangeAdapter {
         updateStateTakeOrder(targetExchange, order, fillTakerQuantity);
     }
 
+    function testTakeOrder(
+        bytes memory _encodedExchangeParameters
+    )
+        public
+        override
+        onlyManager
+        notShutDown
+    {
+        (
+            address[5] memory orderAddresses,
+            uint[7] memory orderValues,
+            bytes[3] memory orderData
+        ) = abi.decode(_encodedExchangeParameters, (address[5], uint[7], bytes[3]));
+
+        IZeroExV2.Order memory order = IZeroExV2.Order({
+            makerAddress: orderAddresses[0],
+            takerAddress: orderAddresses[1],
+            senderAddress: orderAddresses[2],
+            feeRecipientAddress: orderAddresses[3],
+
+            makerAssetAmount: orderValues[0],
+            takerAssetAmount: orderValues[1],
+            makerFee: orderValues[2],
+            takerFee: orderValues[3],
+            expirationTimeSeconds: orderValues[4],
+            salt: orderValues[5],
+
+            makerAssetData: orderData[0],
+            takerAssetData: orderData[1]
+        });
+
+        address targetExchange = orderAddresses[4];
+        uint fillTakerQuantity = orderValues[6];
+        bytes memory signature = orderData[2];
+
+        approveAssetsTakeOrder(targetExchange, order);
+
+        uint takerAssetFilledAmount = executeFill(targetExchange, order, fillTakerQuantity, signature);
+        require(
+            takerAssetFilledAmount == fillTakerQuantity,
+            "Filled amount does not match desired fill amount"
+        );
+
+        updateStateTakeOrder(targetExchange, order, fillTakerQuantity);
+    }
+
     /// @notice Cancel the 0x make order
     function cancelOrder(
         address targetExchange,

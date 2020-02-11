@@ -72,6 +72,7 @@ const main = async input => {
   const sigs = [
     'makeOrder(address,address[8],uint256[8],bytes[4],bytes32,bytes)',
     'takeOrder(address,address[8],uint256[8],bytes[4],bytes32,bytes)',
+    'testTakeOrder(bytes)',
     'cancelOrder(address,address[8],uint256[8],bytes[4],bytes32,bytes)',
     'withdrawTokens(address,address[8],uint256[8],bytes[4],bytes32,bytes)',
   ].map(s => web3.utils.keccak256(s).slice(0,10));

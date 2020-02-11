@@ -163,7 +163,8 @@ contract Trading is DSMath, TokenUser, Spoke, TradingSignatures {
         PolicyManager(routes.policyManager).preValidate(methodSelector, [orderAddresses[0], orderAddresses[1], orderAddresses[2], orderAddresses[3], exchanges[exchangeIndex].exchange], [orderValues[0], orderValues[1], orderValues[6]], identifier);
         if (
             methodSelector == MAKE_ORDER ||
-            methodSelector == TAKE_ORDER
+            methodSelector == TAKE_ORDER ||
+            methodSelector == TEST_TAKE_ORDER
         ) {
             require(Registry(routes.registry).assetIsRegistered(
                 orderAddresses[2]), 'Maker asset not registered'
@@ -183,15 +184,22 @@ contract Trading is DSMath, TokenUser, Spoke, TradingSignatures {
                     'Taker fee asset not registered'
                 );
             }
+            if (orderAddresses[7] != address(0) && methodSelector == TEST_TAKE_ORDER) {
+                require(
+                    Registry(routes.registry).assetIsRegistered(orderAddresses[7]),
+                    'Taker fee asset not registered'
+                );
+            }
         }
         (bool success, bytes memory returnData) = exchanges[exchangeIndex].adapter.delegatecall(
             abi.encodeWithSignature(
                 methodSignature,
-                exchanges[exchangeIndex].exchange,
-                orderAddresses,
-                orderValues,
-                orderData,
-                identifier,
+                // exchanges[exchangeIndex].exchange,
+                // orderAddresses,
+                // orderValues,
+                // orderData,
+                // identifier,
+                // signature,
                 signature
             )
         );
