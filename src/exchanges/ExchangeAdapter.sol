@@ -29,6 +29,8 @@ contract ExchangeAdapter is DSMath {
         _;
     }
 
+    function decoderId() external pure virtual returns (uint) { return 0; }
+
     /// @dev Either manager sends, fund shut down, or order expired
     function ensureCancelPermitted(address exchange, address asset) internal {
         require(

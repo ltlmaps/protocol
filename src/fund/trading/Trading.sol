@@ -115,39 +115,40 @@ contract Trading is DSMath, TokenUser, Spoke, TradingSignatures {
         exchanges.push(Exchange(_exchange, _adapter, takesCustody));
     }
 
-    /// @notice Universal method for calling exchange functions through adapters
-    /// @notice See adapter contracts for parameters needed for each exchange
-    /// @param exchangeIndex Index of the exchange in the "exchanges" array
-    /// @param orderAddresses [0] Order maker
-    /// @param orderAddresses [1] Order taker
-    /// @param orderAddresses [2] Order maker asset
-    /// @param orderAddresses [3] Order taker asset
-    /// @param orderAddresses [4] feeRecipientAddress
-    /// @param orderAddresses [5] senderAddress
-    /// @param orderAddresses [6] maker fee asset
-    /// @param orderAddresses [7] taker fee asset
-    /// @param orderValues [0] makerAssetAmount
-    /// @param orderValues [1] takerAssetAmount
-    /// @param orderValues [2] Maker fee
-    /// @param orderValues [3] Taker fee
-    /// @param orderValues [4] expirationTimeSeconds
-    /// @param orderValues [5] Salt/nonce
-    /// @param orderValues [6] Fill amount: amount of taker token to be traded
-    /// @param orderValues [7] Dexy signature mode
-    /// @param orderData [0] Encoded data specific to maker asset
-    /// @param orderData [1] Encoded data specific to taker asset
-    /// @param orderData [2] Encoded data specific to maker asset fee
-    /// @param orderData [3] Encoded data specific to taker asset fee
-    /// @param identifier Order identifier
-    /// @param signature Signature of order maker
+    // /// @notice Universal method for calling exchange functions through adapters
+    // /// @notice See adapter contracts for parameters needed for each exchange
+    // /// @param exchangeIndex Index of the exchange in the "exchanges" array
+    // /// @param orderAddresses [0] Order maker
+    // /// @param orderAddresses [1] Order taker
+    // /// @param orderAddresses [2] Order maker asset
+    // /// @param orderAddresses [3] Order taker asset
+    // /// @param orderAddresses [4] feeRecipientAddress
+    // /// @param orderAddresses [5] senderAddress
+    // /// @param orderAddresses [6] maker fee asset
+    // /// @param orderAddresses [7] taker fee asset
+    // /// @param orderValues [0] makerAssetAmount
+    // /// @param orderValues [1] takerAssetAmount
+    // /// @param orderValues [2] Maker fee
+    // /// @param orderValues [3] Taker fee
+    // /// @param orderValues [4] expirationTimeSeconds
+    // /// @param orderValues [5] Salt/nonce
+    // /// @param orderValues [6] Fill amount: amount of taker token to be traded
+    // /// @param orderValues [7] Dexy signature mode
+    // /// @param orderData [0] Encoded data specific to maker asset
+    // /// @param orderData [1] Encoded data specific to taker asset
+    // /// @param orderData [2] Encoded data specific to maker asset fee
+    // /// @param orderData [3] Encoded data specific to taker asset fee
+    // /// @param identifier Order identifier
+    // /// @param signature Signature of order maker
     function callOnExchange(
         uint exchangeIndex,
         string memory methodSignature,
-        address[8] memory orderAddresses,
-        uint[8] memory orderValues,
-        bytes[4] memory orderData,
+        // address[8] memory orderAddresses,
+        // uint[8] memory orderValues,
+        // bytes[4] memory orderData,
         bytes32 identifier,
-        bytes memory signature
+        // bytes memory signature
+        bytes memory _encodedParametersForExchange
     )
         public
         onlyInitialized
@@ -160,33 +161,34 @@ contract Trading is DSMath, TokenUser, Spoke, TradingSignatures {
             ),
             "Adapter method not allowed"
         );
-        PolicyManager(routes.policyManager).preValidate(methodSelector, [orderAddresses[0], orderAddresses[1], orderAddresses[2], orderAddresses[3], exchanges[exchangeIndex].exchange], [orderValues[0], orderValues[1], orderValues[6]], identifier);
+        (address[6] memory addrsForValidations, uint[3] memory valsForValidations) = _getParametersForRiskManagement(exchangeIndex, _encodedParametersForExchange);
+        PolicyManager(routes.policyManager).preValidate(methodSelector, [addrsForValidations[0], addrsForValidations[1], addrsForValidations[2], addrsForValidations[3], exchanges[exchangeIndex].exchange], [valsForValidations[0], valsForValidations[1], valsForValidations[2]], identifier);
         if (
             methodSelector == MAKE_ORDER ||
             methodSelector == TAKE_ORDER ||
             methodSelector == TEST_TAKE_ORDER
         ) {
             require(Registry(routes.registry).assetIsRegistered(
-                orderAddresses[2]), 'Maker asset not registered'
+                addrsForValidations[2]), 'Maker asset not registered'
             );
             require(Registry(routes.registry).assetIsRegistered(
-                orderAddresses[3]), 'Taker asset not registered'
+                addrsForValidations[3]), 'Taker asset not registered'
             );
-            if (orderAddresses[6] != address(0) && methodSelector == MAKE_ORDER) {
+            if (addrsForValidations[4] != address(0) && methodSelector == MAKE_ORDER) {
                 require(
-                    Registry(routes.registry).assetIsRegistered(orderAddresses[6]),
+                    Registry(routes.registry).assetIsRegistered(addrsForValidations[4]),
                     'Maker fee asset not registered'
                 );
             }
-            if (orderAddresses[7] != address(0) && methodSelector == TAKE_ORDER) {
+            if (addrsForValidations[5] != address(0) && methodSelector == TAKE_ORDER) {
                 require(
-                    Registry(routes.registry).assetIsRegistered(orderAddresses[7]),
+                    Registry(routes.registry).assetIsRegistered(addrsForValidations[5]),
                     'Taker fee asset not registered'
                 );
             }
-            if (orderAddresses[7] != address(0) && methodSelector == TEST_TAKE_ORDER) {
+            if (addrsForValidations[5] != address(0) && methodSelector == TEST_TAKE_ORDER) {
                 require(
-                    Registry(routes.registry).assetIsRegistered(orderAddresses[7]),
+                    Registry(routes.registry).assetIsRegistered(addrsForValidations[5]),
                     'Taker fee asset not registered'
                 );
             }
@@ -200,20 +202,74 @@ contract Trading is DSMath, TokenUser, Spoke, TradingSignatures {
                 // orderData,
                 // identifier,
                 // signature,
-                signature
+                _encodedParametersForExchange
             )
         );
         require(success, string(returnData));
-        PolicyManager(routes.policyManager).postValidate(methodSelector, [orderAddresses[0], orderAddresses[1], orderAddresses[2], orderAddresses[3], exchanges[exchangeIndex].exchange], [orderValues[0], orderValues[1], orderValues[6]], identifier);
-        emit ExchangeMethodCall(
-            exchanges[exchangeIndex].exchange,
-            methodSignature,
-            orderAddresses,
-            orderValues,
-            orderData,
-            identifier,
-            signature
-        );
+        PolicyManager(routes.policyManager).postValidate(methodSelector, [addrsForValidations[0], addrsForValidations[1], addrsForValidations[2], addrsForValidations[3], exchanges[exchangeIndex].exchange], [valsForValidations[0], valsForValidations[1], valsForValidations[2]], identifier);
+        // emit ExchangeMethodCall(
+            // exchanges[exchangeIndex].exchange,
+            // methodSignature,
+            // orderAddresses,
+            // orderValues,
+            // orderData,
+            // identifier,
+            // signature
+        // );
+    }
+
+    function getAssetAddress(bytes memory assetData)
+        internal
+        view
+        returns (address assetAddress)
+    {
+        assembly {
+            assetAddress := mload(add(assetData, 36))
+        }
+    }
+
+    // address makerAddress,
+    // address takerAddress,
+    // address makerAsset,
+    // address takerAsset,
+    // address makerFeeAsset,
+    // address takerFeeAsset,
+    // uint makerAssetAmount,
+    // uint takerAssetAmount,
+    // uint fillAmout
+    function _getParametersForRiskManagement(
+        uint exchangeIndex,
+        bytes memory encodedParameters
+    )
+        internal
+        returns (address[6] memory, uint[3] memory)
+    {
+        address[6] memory addrs;
+        uint[3] memory vals;
+
+        if (ExchangeAdapter(exchanges[exchangeIndex].adapter).decoderId() == 0) { // 0xV2
+            (
+                address[5] memory orderAddresses,
+                uint[7] memory orderValues,
+                bytes[3] memory orderData
+            ) = abi.decode(encodedParameters, (address[5], uint[7], bytes[3]));
+
+            addrs = [
+                orderAddresses[0],
+                orderAddresses[1],
+                getAssetAddress(orderData[0]),
+                getAssetAddress(orderData[1]),
+                address(0),
+                address(0)
+            ];
+
+            vals = [
+                orderValues[0],
+                orderValues[1],
+                orderValues[6]
+            ];
+        }
+        return (addrs, vals);
     }
 
     /// @dev Make sure this is called after orderUpdateHook in adapters
