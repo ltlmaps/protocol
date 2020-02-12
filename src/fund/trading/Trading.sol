@@ -269,6 +269,27 @@ contract Trading is DSMath, TokenUser, Spoke, TradingSignatures {
                 orderValues[6]
             ];
         }
+        if (ExchangeAdapter(exchanges[exchangeIndex].adapter).decoderId() == 1) { // uniswap
+            (
+                address[3] memory orderAddresses,
+                uint[3] memory orderValues
+            ) = abi.decode(encodedParameters, (address[3], uint[3]));
+
+            addrs = [
+                address(0),
+                address(this),
+                orderAddresses[0],
+                orderAddresses[1],
+                address(0),
+                address(0)
+            ];
+
+            vals = [
+                orderValues[0],
+                orderValues[1],
+                orderValues[2]
+            ];
+        }
         return (addrs, vals);
     }
 

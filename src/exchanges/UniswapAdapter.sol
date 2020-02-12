@@ -12,6 +12,9 @@ import "./interfaces/IUniswapExchange.sol";
 import "./ExchangeAdapter.sol";
 
 contract UniswapAdapter is DSMath, ExchangeAdapter {
+
+    function decoderId() external pure override returns (uint) { return 1; }
+
     /// @notice Take order that uses a user-defined src token amount to trade for a dest token amount
     /// @dev For the purpose of PriceTolerance, _orderValues [1] == _orderValues [6] = Dest token amount
     /// @param _targetExchange Address of Uniswap factory contract
@@ -42,6 +45,53 @@ contract UniswapAdapter is DSMath, ExchangeAdapter {
         address takerAsset = _orderAddresses[3];
         uint makerAssetAmount = _orderValues[0];
         uint takerAssetAmount = _orderValues[1];
+
+        uint actualReceiveAmount = dispatchSwap(
+            _targetExchange, takerAsset, takerAssetAmount, makerAsset, makerAssetAmount
+        );
+        require(
+            actualReceiveAmount >= makerAssetAmount,
+            "Received less than expected from Uniswap exchange"
+        );
+
+        updateStateTakeOrder(
+            _targetExchange,
+            makerAsset,
+            takerAsset,
+            takerAssetAmount,
+            actualReceiveAmount
+        );
+    }
+
+    function testTakeOrder(
+        // address _targetExchange,
+        // address[8] memory _orderAddresses,
+        // uint[8] memory _orderValues,
+        // bytes[4] memory _orderData,
+        // bytes32 _identifier,
+        // bytes memory _signature
+        bytes memory _encodedExchangeParameters
+    )
+        public
+        override
+        onlyManager
+        notShutDown
+    {
+        (
+            address[3] memory _orderAddresses,
+            uint[3] memory _orderValues
+        ) = abi.decode(_encodedExchangeParameters, (address[3], uint[3]));
+
+        require(
+            _orderValues[1] == _orderValues[2],
+            "Taker asset amount must equal taker asset fill amount"
+        );
+
+        address makerAsset = _orderAddresses[0];
+        address takerAsset = _orderAddresses[1];
+        uint makerAssetAmount = _orderValues[0];
+        uint takerAssetAmount = _orderValues[1];
+        address _targetExchange = _orderAddresses[2];
 
         uint actualReceiveAmount = dispatchSwap(
             _targetExchange, takerAsset, takerAssetAmount, makerAsset, makerAssetAmount
