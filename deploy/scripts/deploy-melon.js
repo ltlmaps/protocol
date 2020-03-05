@@ -26,7 +26,11 @@ const main = async input => {
   const sharesFactory = await nab('SharesFactory', [], melonAddrs);
   const tradingFactory = await nab('TradingFactory', [], melonAddrs);
   const registry = await nab('Registry', [melonConf.registryOwner], melonAddrs);
-  const engine = await nab('Engine', [melonConf.engineDelay, registry.options.address], melonAddrs);
+  const engine = await nab(
+    'Engine',
+    [melonConf.engineDelay, registry.options.address],
+    melonAddrs
+  );
 
   let priceSource;
   if (conf.track === 'KYBER_PRICE') {

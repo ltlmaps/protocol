@@ -81,7 +81,7 @@ describe('calcFundMetrics', () => {
       [wantedShares, investmentAmount, weth.options.address],
       { ...defaultTxOpts, value: amguAmount }
     );
-    await send(participation, 'executeRequestFor', [deployer], defaultTxOpts);
+    await send(participation, 'executeRequest', [], defaultTxOpts);
 
     const fundCalcs = await call(accounting, 'calcFundMetrics');
     expect(new BN(fundCalcs.gav_)).bigNumberEq(new BN(investmentAmount));

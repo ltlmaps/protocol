@@ -141,8 +141,8 @@ test('Invest in fund with enough MLN to buy desired ETH from engine', async () =
   );
   await send(
     participation,
-    'executeRequestFor',
-    [investor],
+    'executeRequest',
+    [],
     { ...investorTxOpts, value: amguAmount }
   );
 

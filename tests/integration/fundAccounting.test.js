@@ -57,7 +57,7 @@ test('initial investment (with quote token)', async () => {
     [wantedShares, offeredValue, weth.options.address],
     { ...investorTxOpts, value: amguAmount }
   );
-  await send(participation, 'executeRequestFor', [investor], investorTxOpts);
+  await send(participation, 'executeRequest', [], investorTxOpts);
 
   const fundWethHoldings = await call(accounting, 'getFundHoldingsForAsset', [weth.options.address])
   const fundCalculations = await call(accounting, 'calcFundMetrics');

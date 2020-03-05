@@ -5,8 +5,11 @@
  * @test A second user can simultaneously invest (with a second default token)
  * @test A third user can simultaneously invest (with a newly approved token)
  * @test Multiple pending investment requests can all be exectuted
+ * @test Request can be executed through Engine, burning MLN
+ * @test Changing incentive does not affect incentive attached to an existing request
  */
 
+import web3 from '~/deploy/utils/get-web3';
 import { BN, toWei } from 'web3-utils';
 import { call, send } from '~/deploy/utils/deploy-contract';
 import { partialRedeploy } from '~/deploy/scripts/deploy-system';
@@ -38,14 +41,17 @@ beforeAll(async () => {
 
 describe('Fund 1: Multiple investors buying shares with different tokens', () => {
   let amguAmount, shareSlippageTolerance;
-  let wantedShares1, wantedShares2, wantedShares3;
+  let wantedShares1, wantedShares2, wantedShares3, wantedShares4;
   let daiToEthRate, mlnToEthRate, wethToEthRate;
   let dai, mln, priceSource, weth;
-  let fund;
+  let registry, fund, engine, engineAdapter;
 
   beforeAll(async () => {
     const deployed = await partialRedeploy([CONTRACT_NAMES.VERSION]);
     const contracts = deployed.contracts;
+    registry = contracts[CONTRACT_NAMES.REGISTRY];
+    engine = contracts[CONTRACT_NAMES.ENGINE];
+    engineAdapter = contracts[CONTRACT_NAMES.ENGINE_ADAPTER];
     dai = contracts.DAI;
     mln = contracts.MLN;
     weth = contracts.WETH;
@@ -73,6 +79,8 @@ describe('Fund 1: Multiple investors buying shares with different tokens', () =>
         investor: manager,
         tokenContract: weth
       },
+      exchanges: [engine.options.address],
+      exchangeAdapters: [engineAdapter.options.address],
       manager,
       quoteToken: weth.options.address,
       version
@@ -82,6 +90,7 @@ describe('Fund 1: Multiple investors buying shares with different tokens', () =>
     wantedShares1 = toWei('1', 'ether');
     wantedShares2 = toWei('2', 'ether');
     wantedShares3 = toWei('1.5', 'ether');
+    wantedShares4 = toWei('0.5', 'ether');
     shareSlippageTolerance = new BN(toWei('0.0001', 'ether')); // 0.01%
   });
 
@@ -229,8 +238,8 @@ describe('Fund 1: Multiple investors buying shares with different tokens', () =>
 
     await send(
       participation,
-      'executeRequestFor',
-      [investor1],
+      'executeRequest',
+      [],
       investor1TxOpts
     );
     const investor1Shares = await call(shares, 'balanceOf', [investor1]);
@@ -238,8 +247,8 @@ describe('Fund 1: Multiple investors buying shares with different tokens', () =>
 
     await send(
       participation,
-      'executeRequestFor',
-      [investor2],
+      'executeRequest',
+      [],
       investor2TxOpts
     );
     const investor2Shares = await call(shares, 'balanceOf', [investor2]);
@@ -247,25 +256,26 @@ describe('Fund 1: Multiple investors buying shares with different tokens', () =>
 
     await send(
       participation,
-      'executeRequestFor',
-      [investor3],
+      'executeRequest',
+      [],
       investor3TxOpts
     );
     const investor3Shares = await call(shares, 'balanceOf', [investor3]);
     expect(investor3Shares).toEqual(wantedShares3);
   });
 
-  test('Investor 1 buys more shares, with a different asset', async () => {
-    const { accounting, participation, shares } = fund;
+  test('Investment request allowed (with incentive) after previous request executed', async () => {
+    const { accounting, participation } = fund;
 
-    const wantedShares = toWei('1', 'ether');
+    const incentiveAmount = '10000000000000';
+    await send(registry, 'setIncentive', [incentiveAmount], defaultTxOpts);
 
-    const offerAsset = dai.options.address;
+    const offerAsset = weth.options.address;
     const expectedOfferAssetCost = new BN(
       await call(
         accounting,
         'getShareCostInAsset',
-        [wantedShares, offerAsset]
+        [wantedShares4, offerAsset]
       )
     );
     const offerAssetMaxQuantity = BNExpMul(
@@ -273,10 +283,10 @@ describe('Fund 1: Multiple investors buying shares with different tokens', () =>
       new BN(toWei('1', 'ether')).add(shareSlippageTolerance)
     ).toString();
 
-    // Investor 1 - dai
-    await send(dai, 'transfer', [investor1, offerAssetMaxQuantity], defaultTxOpts);
+    // Investor 1 - weth
+    await send(weth, 'transfer', [investor1, offerAssetMaxQuantity], defaultTxOpts);
     await send(
-      dai,
+      weth,
       'approve',
       [participation.options.address, offerAssetMaxQuantity],
       investor1TxOpts
@@ -284,9 +294,14 @@ describe('Fund 1: Multiple investors buying shares with different tokens', () =>
     await send(
       participation,
       'requestInvestment',
-      [wantedShares, offerAssetMaxQuantity, offerAsset],
-      { ...investor1TxOpts, value: amguAmount }
+      [wantedShares4, offerAssetMaxQuantity, weth.options.address],
+      { ...investor1TxOpts, value: new BN(amguAmount).add(new BN(incentiveAmount)) }
     );
+  });
+
+  test('Request can be executed through Engine, burning MLN', async () => {
+    const { participation, shares } = fund;
+
     // Need price update before participation executed
     await delay(1000);
 
@@ -300,14 +315,110 @@ describe('Fund 1: Multiple investors buying shares with different tokens', () =>
       defaultTxOpts
     );
 
-    const preInvestorShares = new BN(await call(shares, 'balanceOf', [investor1]));
+    // Unauthorized address cannot call executeRequestFor
+    await expect(
+      send(
+        participation,
+        'executeRequestFor',
+        [investor1],
+        investor3TxOpts
+    )).rejects.toThrowFlexible('This can only be called through the Engine');
+
+    // Address without enough MLN is unable to execute another's request
+    expect((await call(mln, 'balanceOf', [investor3])).toString()).toBe('0');
+    await expect(
+      send(
+        engine,
+        'executeRequestAndBurnMln',
+        [participation.options.address, investor1],
+        investor3TxOpts
+    )).rejects.toThrowFlexible('executeRequestAndBurnMln: Sender does not have enough MLN');
+
+    // Set up executor (investor3) with enough MLN
+    const incentiveFromRequest = new BN(
+      await call(participation, 'getRequestIncentive', [investor1])
+    );
+    const mlnRequiredToExecute = new BN(
+      await call(engine, 'mlnRequiredForIncentiveAmount', [incentiveFromRequest.toString()])
+    );
+    await send(mln, 'transfer', [investor3, mlnRequiredToExecute.toString()], defaultTxOpts);
+
+    // Attempting to execute without approving MLN should fail
+    await expect(
+      send(
+        engine,
+        'executeRequestAndBurnMln',
+        [participation.options.address, investor1],
+        investor3TxOpts
+      )
+    ).rejects.toThrowFlexible();
+
+    // Approving sufficient MLN and executing should work
     await send(
-      participation,
-      'executeRequestFor',
-      [investor1],
+      mln,
+      'approve',
+      [engine.options.address, mlnRequiredToExecute.toString()],
+      investor3TxOpts
+    );
+
+    const preInvestor1Shares = new BN(await call(shares, 'balanceOf', [investor1]));
+    const preMlnTotalSupply = new BN(await call(mln, 'totalSupply'));
+    const preParticipationEth = new BN(await web3.eth.getBalance(participation.options.address));
+    const preExecutorEth = new BN(await web3.eth.getBalance(investor3));
+    const preExecutorMln = new BN(await call(mln, 'balanceOf', [investor3]));
+
+    const gasPrice = await web3.eth.getGasPrice();
+    const receipt = await send(
+      engine,
+      'executeRequestAndBurnMln',
+      [participation.options.address, investor1],
+      {...investor3TxOpts, gasPrice}
+    );
+    const executeTxCost = new BN(gasPrice).mul(new BN(receipt.gasUsed));
+
+    const postInvestor1Shares = new BN(await call(shares, 'balanceOf', [investor1]));
+    const postMlnTotalSupply = new BN(await call(mln, 'totalSupply'));
+    const postParticipationEth = new BN(await web3.eth.getBalance(participation.options.address));
+    const postExecutorMln = new BN(await call(mln, 'balanceOf', [investor3]));
+    const postExecutorEth = new BN(await web3.eth.getBalance(investor3));
+
+    expect(postInvestor1Shares).bigNumberEq(new BN(preInvestor1Shares).add(new BN(wantedShares4)));
+    expect(postMlnTotalSupply).bigNumberEq(preMlnTotalSupply.sub(mlnRequiredToExecute));
+    expect(postParticipationEth).bigNumberEq(preParticipationEth.sub(incentiveFromRequest));
+    expect(postExecutorMln).bigNumberEq(preExecutorMln.sub(mlnRequiredToExecute));
+    expect(postExecutorEth).bigNumberEq(
+      new BN(preExecutorEth.add(incentiveFromRequest)).sub(executeTxCost)
+    );
+  });
+
+  test('Changing incentive does not affect existing request', async () => {
+    const { participation } = fund;
+
+    const wethInvestAmount = 10000000;
+    const preUpdateIncentive = new BN(await call(registry, 'incentive'));
+
+    await send(weth, 'transfer', [investor1, wethInvestAmount], defaultTxOpts);
+    await send(
+      weth,
+      'approve',
+      [participation.options.address, wethInvestAmount],
       investor1TxOpts
     );
-    const postInvestorShares = new BN(await call(shares, 'balanceOf', [investor1]));
-    expect(postInvestorShares).toEqual(preInvestorShares.add(new BN(wantedShares)));
+    await send(
+      participation,
+      'requestInvestment',
+      [wethInvestAmount, wethInvestAmount, weth.options.address],
+      { ...investor1TxOpts, value: amguAmount }
+    );
+    
+    const newIncentive = new BN(preUpdateIncentive.mul(new BN('2')));
+    await send(registry, 'setIncentive', [newIncentive.toString()], defaultTxOpts);
+    const postUpdateIncentive = new BN(await call(registry, 'incentive'));
+
+    expect(postUpdateIncentive).bigNumberEq(newIncentive);
+   
+    const incentiveFromRequest = new BN(await call(participation, 'getRequestIncentive', [investor1]));
+
+    expect(incentiveFromRequest).bigNumberEq(preUpdateIncentive);
   });
 });

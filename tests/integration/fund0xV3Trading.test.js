@@ -368,8 +368,8 @@ describe('Fund takes an order with a different taker fee asset', () => {
     );
     await send(
       participation,
-      'executeRequestFor',
-      [investor],
+      'executeRequest',
+      [],
       { ...investorTxOpts, value: amguAmount }
     );
   

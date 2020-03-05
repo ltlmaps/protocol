@@ -27,7 +27,7 @@ async function assertAmguTx(contract, method, args = []) {
   const {payer, amguChargableGas, incentivePaid} = getEventFromLogs(
     result.logs,
     CONTRACT_NAMES.AMGU_CONSUMER,
-    'AmguPaid',
+    'AmguInfo',
   );
 
   // TODO: This method does not result in less than the estimate
@@ -202,7 +202,7 @@ test('set amgu with incentive attatched and check its usage in creating a fund',
   } = getEventFromLogs(
     requestInvestmentRes.logs,
     CONTRACT_NAMES.PARTICIPATION,
-    'AmguPaid',
+    'AmguInfo',
   );
 
   const postUserBalance = new BN(await web3.eth.getBalance(deployer));

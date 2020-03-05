@@ -81,7 +81,7 @@ describe('new investment in fund', () => {
       [wantedShares, investmentAmount, weth.options.address],
       { ...defaultTxOpts, value: amguAmount }
     );
-    await send(participation, 'executeRequestFor', [deployer], defaultTxOpts);
+    await send(participation, 'executeRequest', [], defaultTxOpts);
   });
 
   it('emits correct AssetBalanceUpdated event', async() => {

@@ -91,8 +91,8 @@ export const investInFund = async ({ fundAddress, investment, amguTxValue, token
 
   await send(
     participation,
-    'executeRequestFor',
-    [investor],
+    'executeRequest',
+    [],
     { ...investorTxOpts, value: amguTxValue }
   )
 }

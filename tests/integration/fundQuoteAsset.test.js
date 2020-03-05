@@ -115,8 +115,8 @@ test('Fund gets non-quote asset from investment', async () => {
 
   await send(
     participation,
-    'executeRequestFor',
-    [investor],
+    'executeRequest',
+    [],
     investorTxOpts
   );
 
@@ -221,8 +221,8 @@ test('Fund gets asset from investment that has no pair with the quote asset in t
   );
   await send(
     participation,
-    'executeRequestFor',
-    [investor],
+    'executeRequest',
+    [],
     investorTxOpts
   );
 
