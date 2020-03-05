@@ -39,6 +39,7 @@ interface IParticipation {
         uint investmentAmount,
         address investmentAsset
     ) external payable;
+    function getRequestIncentive(address _requestOwner) external view returns (uint256);
 
     // Caller: Auth only
     function disableInvestment(address[] calldata _assets) external;

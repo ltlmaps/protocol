@@ -35,13 +35,6 @@ contract Participation is TokenUser, AmguConsumer, Spoke {
         uint256 redeemedShares
     );
 
-    struct Request {
-        address investmentAsset;
-        uint256 investmentAmount;
-        uint256 requestedShares;
-        uint256 timestamp;
-    }
-
     event RequestExecution (
         address indexed requestOwner,
         address indexed executor,
@@ -49,6 +42,14 @@ contract Participation is TokenUser, AmguConsumer, Spoke {
         uint256 investmentAmount,
         uint256 requestedShares
     );
+
+    struct Request {
+        address investmentAsset;
+        uint256 investmentAmount;
+        uint256 requestedShares;
+        uint256 timestamp;
+        uint256 incentive;
+    }
 
     uint8 constant public SHARES_DECIMALS = 18;
     uint32 constant public REQUEST_LIFESPAN = 1 days; // 86,400 seconds
@@ -96,16 +97,43 @@ contract Participation is TokenUser, AmguConsumer, Spoke {
         __enableInvestment(_assets);
     }
 
-    function executeRequestFor(address _requestOwner)
+    function executeRequest()
         external
         notShutDown
         amguPayable(false)
         payable
+        onlyInitialized
     {
+        uint256 incentiveAmount = requests[msg.sender].incentive;
+        __executeRequestFor(msg.sender);
+        require(
+            msg.sender.send(incentiveAmount),
+            "ETH transfer failed"
+        );
+    }
+
+    function executeRequestFor(address _requestOwner)
+        external
+        notShutDown
+    {
+        require(
+            msg.sender == engine(),
+            "This can only be called through the Engine"
+        );
+        uint256 incentiveAmount = requests[_requestOwner].incentive;
+        __executeRequestFor(_requestOwner);
+        IEngine(engine()).receiveIncentiveInEth.value(incentiveAmount)();
+    }
+
+    function __executeRequestFor(address _requestOwner) internal {
         Request memory request = requests[_requestOwner];
         require(
             hasValidRequest(_requestOwner),
             "No valid request for this address"
+        );
+        require(
+            IPriceSource(priceSource()).hasValidPrice(request.investmentAsset),
+            "Price not valid"
         );
 
         IFeeManager(routes.feeManager).rewardManagementFee();
@@ -140,8 +168,6 @@ contract Participation is TokenUser, AmguConsumer, Spoke {
                 investmentAssetChange
             );
         }
-
-        msg.sender.transfer(Registry(routes.registry).incentive());
 
         IShares(routes.shares).createFor(_requestOwner, request.requestedShares);
         IAccounting(routes.accounting).increaseAssetBalance(
@@ -204,7 +230,8 @@ contract Participation is TokenUser, AmguConsumer, Spoke {
             investmentAsset: _investmentAsset,
             investmentAmount: _investmentAmount,
             requestedShares: _requestedShares,
-            timestamp: block.timestamp
+            timestamp: block.timestamp,
+            incentive: Registry(routes.registry).incentive()
         });
         IPolicyManager(routes.policyManager).postValidate(
             bytes4(keccak256("requestInvestment(uint256,uint256,address)")),
@@ -240,6 +267,10 @@ contract Participation is TokenUser, AmguConsumer, Spoke {
             _shareQuantity
         ) / add(shares.totalSupply(), totalPerformanceFee);
         return performanceFeePortion;
+    }
+
+    function getRequestIncentive(address _requestOwner) external view returns (uint256) {
+        return requests[_requestOwner].incentive;
     }
 
     function hasRequest(address _who) public view returns (bool) {
@@ -366,8 +397,9 @@ contract Participation is TokenUser, AmguConsumer, Spoke {
         );
         IERC20 investmentAsset = IERC20(request.investmentAsset);
         uint256 investmentAmount = request.investmentAmount;
+        uint256 incentiveAmount = request.incentive;
         delete requests[_requestOwner];
-        msg.sender.transfer(Registry(routes.registry).incentive());
+        msg.sender.transfer(incentiveAmount);
         safeTransfer(address(investmentAsset), _requestOwner, investmentAmount);
 
         emit CancelRequest(_requestOwner);
