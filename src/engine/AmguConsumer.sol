@@ -16,7 +16,7 @@ abstract contract AmguConsumer is DSMath {
     function mlnToken() public view virtual returns (address);
     function priceSource() public view virtual returns (address);
     function registry() public view virtual returns (address);
-    event AmguInfo(
+    event AmguFeePaid(
         address indexed payer,
         uint256 totalAmguPaidInEth,
         uint256 amguChargableGas,
@@ -61,6 +61,6 @@ abstract contract AmguConsumer is DSMath {
             ),
             "Refund failed"
         );
-        emit AmguInfo(msg.sender, ethToPay, sub(preGas, postGas), incentiveAmount);
+        emit AmguFeePaid(msg.sender, ethToPay, sub(preGas, postGas), incentiveAmount);
     }
 }

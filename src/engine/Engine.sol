@@ -11,15 +11,15 @@ import "../version/Registry.sol";
 contract Engine is DSMath {
     event RegistryChange(address registry);
     event SetAmguPrice(uint256 amguPrice);
-    event AmguPaid(
+    event AmguConsumed(
         uint256 amguPaid,
         uint256 etherPaid,
-        uint256 totalAmguPaid,
-        uint256 totalEtherPaid
+        uint256 totalAmguConsumed,
+        uint256 totalEtherConsumed
     );
     event Thaw(uint256 amount);
     event Burn(uint256 amount);
-    event RequestExecutedForIncentive(
+    event IncentivePaid(
         address indexed participationContract,
         address indexed requestOwner,
         uint256 incentiveAmount
@@ -208,7 +208,7 @@ contract Engine is DSMath {
             msg.sender.send(incentiveAmount),
             "executeRequestAndBurnMln: Incentive transfer failed"
         );
-        emit RequestExecutedForIncentive(_participation, _requestOwner, incentiveAmount);
+        emit IncentivePaid(_participation, _requestOwner, incentiveAmount);
         emit Burn(mlnAmount);
     }
 
