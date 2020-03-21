@@ -1,7 +1,6 @@
 pragma solidity 0.6.4;
 pragma experimental ABIEncoderV2;
 
-import "../libs/ExchangeAdapter.sol";
 import "../libs/OrderTaker.sol";
 import "../libs/decoders/MinimalTakeOrderDecoder.sol";
 import "../../dependencies/WETH.sol";
@@ -10,7 +9,7 @@ import "../../engine/IEngine.sol";
 /// @title EngineAdapter Contract
 /// @author Melonport AG <team@melonport.com>
 /// @notice Trading adapter to Melon Engine
-contract EngineAdapter is ExchangeAdapter, OrderTaker, MinimalTakeOrderDecoder {
+contract EngineAdapter is OrderTaker, MinimalTakeOrderDecoder {
     /// @notice Extract arguments for risk management validations of a takeOrder call
     /// @param _encodedArgs Encoded parameters passed from client side
     /// @return riskManagementAddresses_ needed addresses for risk management

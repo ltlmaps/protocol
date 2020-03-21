@@ -2,13 +2,12 @@ pragma solidity 0.6.4;
 pragma experimental ABIEncoderV2;
 
 import "../interfaces/IZeroExV2.sol";
-import "../libs/ExchangeAdapter.sol";
 import "../libs/OrderTaker.sol";
 
 /// @title ZeroExV2Adapter Contract
 /// @author Melonport AG <team@melonport.com>
 /// @notice Adapter to 0xV2 Exchange Contract
-contract ZeroExV2Adapter is ExchangeAdapter, OrderTaker {
+contract ZeroExV2Adapter is OrderTaker {
     /// @notice Extract arguments for risk management validations of a takeOrder call
     /// @param _encodedArgs Encoded parameters passed from client side
     /// @return riskManagementAddresses_ needed addresses for risk management

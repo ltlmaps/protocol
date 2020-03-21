@@ -1,7 +1,6 @@
 pragma solidity 0.6.4;
 pragma experimental ABIEncoderV2;
 
-import "../libs/ExchangeAdapter.sol";
 import "../libs/OrderTaker.sol";
 import "../libs/decoders/MinimalTakeOrderDecoder.sol";
 import "../interfaces/IUniswapFactory.sol";
@@ -11,7 +10,7 @@ import "../../dependencies/WETH.sol";
 /// @title UniswapAdapter Contract
 /// @author Melonport AG <team@melonport.com>
 /// @notice Adapter between Melon and Uniswap
-contract UniswapAdapter is ExchangeAdapter, OrderTaker, MinimalTakeOrderDecoder {
+contract UniswapAdapter is OrderTaker, MinimalTakeOrderDecoder {
     /// @notice Extract arguments for risk management validations of a takeOrder call
     /// @param _encodedArgs Encoded parameters passed from client side
     /// @return riskManagementAddresses_ needed addresses for risk management
