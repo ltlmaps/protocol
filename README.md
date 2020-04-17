@@ -1,6 +1,7 @@
 # Melon Protocol
 
 [![Build Status](https://img.shields.io/travis/melonproject/protocol/master.svg?style=flat-square)](https://travis-ci.org/melonproject/protocol)
+[![Coverage Status](https://coveralls.io/repos/github/melonproject/protocol/badge.svg)](https://coveralls.io/github/melonproject/protocol)
 
 Melon is blockchain software that seeks to enable participants to set up, manage and invest in technology regulated investment funds in a way that reduces barriers to entry, while minimizing the requirements for trust.
 

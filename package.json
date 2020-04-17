@@ -24,6 +24,7 @@
     "deployments/"
   ],
   "scripts": {
+    "test:coverage": "truffle run coverage",
     "download-thirdparty": "node scripts/download-thirdparty.js",
     "deploy": "PRIVATE_KEYS=./keys.json DEPLOY_IN=./deploy_in_testing.json DEPLOY_OUT=./deploy_out_testing.json node deploy/scripts/deploy-system.js ./deploy_in_testing.json ./deploy_out_testing.json",
     "deploy-kovan": "PRIVATE_KEYS=./kovan_keys.json DEPLOY_IN=./deploy_in_kovan.json DEPLOY_OUT=./deploy_out_kovan.json node deploy/scripts/deploy-system.js ./deploy_in_kovan.json ./deploy_out_kovan.json",
@@ -47,8 +48,11 @@
     "glob": "^7.1.3",
     "jest": "^24.1.0",
     "jest-matcher-utils": "^24.9.0",
+    "mocha": "^7.1.1",
     "request-promise": "^4.2.2",
     "solhint": "^2.3.0",
+    "solidity-coverage": "^0.7.4",
+    "truffle": "^5.1.21",
     "web3": "1.2.4",
     "web3-eth-abi": "1.2.4",
     "web3-utils": "1.2.4"

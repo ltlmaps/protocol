@@ -19,3 +19,6 @@ kovan_keys.json
 rinkeby_keys.json
 mainnet_keys.json
 
+# coverage
+coverage.json
+coverage
