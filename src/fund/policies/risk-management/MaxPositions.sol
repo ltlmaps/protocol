@@ -1,34 +1,23 @@
 pragma solidity 0.6.8;
 
 import "../../hub/Spoke.sol";
-import "../../shares/Shares.sol";
 import "../../vault/Vault.sol";
-import "../TradingSignatures.sol";
+import "./CallOnIntegrationPostValidatePolicyBase.sol";
 
 /// @title MaxPositions Contract
 /// @author Melon Council DAO <security@meloncoucil.io>
 /// @notice Validates the allowed number of owned assets of a particular fund
-contract MaxPositions is TradingSignatures {
-    enum Applied { pre, post }
-
-    uint public maxPositions;
+contract MaxPositions is CallOnIntegrationPostValidatePolicyBase {
+    uint256 public maxPositions;
 
     /// @dev _maxPositions = 10 means max 10 different asset tokens
     /// @dev _maxPositions = 0 means no asset tokens are investable
-    constructor(uint _maxPositions) public { maxPositions = _maxPositions; }
+    constructor(uint256 _maxPositions) public { maxPositions = _maxPositions; }
 
-    function rule(bytes4 sig, address[5] calldata addresses, uint[3] calldata values, bytes32 identifier)
-        external
-        returns (bool)
-    {
-        if (sig != TAKE_ORDER) revert("Signature was not TakeOrder");
+    // TODO: Revisit allowing denomination asset to pass,
+    // though there are problems with ownedAssets becoming larger than maxPositions
+    function rule(bytes calldata) external view override returns (bool) {
         IHub hub = IHub(Spoke(msg.sender).HUB());
-        // Always allow a trade INTO the quote asset
-        address incomingToken = addresses[2];
-        if (Shares(hub.shares()).DENOMINATION_ASSET() == incomingToken) return true;
         return Vault(payable(hub.vault())).getOwnedAssets().length <= maxPositions;
     }
-
-    function position() external pure returns (Applied) { return Applied.post; }
-    function identifier() external pure returns (string memory) { return 'MaxPositions'; }
 }

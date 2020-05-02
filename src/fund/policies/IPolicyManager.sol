@@ -3,8 +3,11 @@ pragma solidity 0.6.8;
 /// @title PolicyManager Interface
 /// @author Melon Council DAO <security@meloncoucil.io>
 interface IPolicyManager {
-    function postValidate(bytes4, address[5] calldata, uint[3] calldata, bytes32) external;
-    function preValidate(bytes4, address[5] calldata, uint[3] calldata, bytes32) external;
+    enum PolicyHook { BuyShares, CallOnIntegration }
+    enum PolicyHookExecutionTime { Pre, Post }
+
+    function postValidate(PolicyHook, bytes calldata) external;
+    function preValidate(PolicyHook, bytes calldata) external;
 }
 
 /// @title PolicyManagerFactory Interface

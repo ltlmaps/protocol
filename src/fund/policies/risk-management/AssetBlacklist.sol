@@ -1,14 +1,13 @@
 pragma solidity 0.6.8;
 
 import "../AddressList.sol";
-import "../TradingSignatures.sol";
+import "./CallOnIntegrationPostValidatePolicyBase.sol";
 
 /// @title AssetBlacklist Contract
 /// @author Melon Council DAO <security@meloncoucil.io>
-/// @notice Assets can be added but not removed from blacklist
-contract AssetBlacklist is TradingSignatures, AddressList {
-    enum Applied { pre, post }
-
+/// @notice A blacklist of assets to add to a fund's vault
+/// @dev Assets can be added but not removed from blacklist
+contract AssetBlacklist is AddressList, CallOnIntegrationPostValidatePolicyBase {
     constructor(address[] memory _assets) AddressList(_assets) public {}
 
     function addToBlacklist(address _asset) external auth {
@@ -17,12 +16,12 @@ contract AssetBlacklist is TradingSignatures, AddressList {
         mirror.push(_asset);
     }
 
-    function rule(bytes4 sig, address[5] calldata addresses, uint[3] calldata values, bytes32 identifier) external returns (bool) {
-        if (sig != TAKE_ORDER) revert("Signature was not TakeOrder");
-        address incomingToken = addresses[2];
-        return !isMember(incomingToken);
-    }
+    function rule(bytes calldata _encodedArgs) external view override returns (bool) {
+        (,,address[] memory incomingAssets,,,) = __decodeRuleArgs(_encodedArgs);
+        for (uint256 i = 0; i < incomingAssets.length; i++) {
+            if (isMember(incomingAssets[i])) return false;
+        }
 
-    function position() external pure returns (Applied) { return Applied.pre; }
-    function identifier() external pure returns (string memory) { return 'AssetBlacklist'; }
+        return true;
+    }
 }

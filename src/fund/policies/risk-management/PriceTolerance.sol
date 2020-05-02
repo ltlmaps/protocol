@@ -1,18 +1,17 @@
 pragma solidity 0.6.8;
 
-import "../TradingSignatures.sol";
+import "./CallOnIntegrationPostValidatePolicyBase.sol";
+import "../../hub/Hub.sol";
 import "../../hub/Spoke.sol";
 import "../../../dependencies/DSMath.sol";
-import "../../../dependencies/token/IERC20.sol";
-import "../../../integrations/interfaces/IOasisDex.sol";
-import "../../../prices/IPriceSource.sol";
+import "../../../fund/shares/Shares.sol";
+import "../../../prices/IValueInterpreter.sol";
+import "../../../registry/Registry.sol";
 
 /// @title PriceTolerance Contract
 /// @author Melon Council DAO <security@meloncoucil.io>
 /// @notice Validate the price tolerance of a trade
-contract PriceTolerance is TradingSignatures, DSMath {
-    enum Applied { pre, post }
-
+contract PriceTolerance is DSMath, CallOnIntegrationPostValidatePolicyBase {
     uint256 public tolerance;
 
     uint256 constant MULTIPLIER = 10 ** 16; // to give effect of a percentage
@@ -24,97 +23,49 @@ contract PriceTolerance is TradingSignatures, DSMath {
         tolerance = mul(_tolerancePercent, MULTIPLIER);
     }
 
-    /// @notice Taken from OpenZeppelin (https://git.io/fhQqo)
-   function signedSafeSub(int256 _a, int256 _b) internal pure returns (int256) {
-        int256 c = _a - _b;
-        require((_b >= 0 && c <= _a) || (_b < 0 && c > _a));
-
-        return c;
-    }
-
-    function checkPriceToleranceTakeOrder(
-        address _makerAsset,
-        address _takerAsset,
-        uint256 _fillMakerQuantity,
-        uint256 _fillTakerQuantity
-    )
-        internal
-        view
-        returns (bool)
-    {
-        IPriceSource pricefeed = IPriceSource(
-            IRegistry(IHub(Spoke(msg.sender).HUB()).REGISTRY()).priceSource()
-        );
-        uint256 referencePrice;
-        (referencePrice,) = pricefeed.getLiveRate(_takerAsset, _makerAsset);
-
-        uint256 orderPrice = mul(
-            _fillMakerQuantity,
-            10 ** uint256(ERC20WithFields(_takerAsset).decimals())
-        ) / _fillTakerQuantity;
-
-        return orderPrice >= sub(
-            referencePrice,
-            mul(tolerance, referencePrice) / DIVISOR
-        );
-    }
-
-    function takeGenericOrder(
-        address _makerAsset,
-        address _takerAsset,
-        uint256[3] memory _values
-    ) public view returns (bool) {
-        uint256 fillTakerQuantity = _values[2];
-        uint256 fillMakerQuantity = mul(fillTakerQuantity, _values[0]) / _values[1];
-        return checkPriceToleranceTakeOrder(
-            _makerAsset, _takerAsset, fillMakerQuantity, fillTakerQuantity
-        );
-    }
-
-    function takeOasisDex(
-        address _exchange,
-        bytes32 _identifier,
-        uint256 _fillTakerQuantity
-    ) public view returns (bool) {
-        uint256 maxMakerQuantity;
-        address makerAsset;
-        uint256 maxTakerQuantity;
-        address takerAsset;
+    function rule(bytes calldata _encodedArgs) external view override returns (bool) {
         (
-            maxMakerQuantity,
-            makerAsset,
-            maxTakerQuantity,
-            takerAsset
-        ) = IOasisDex(_exchange).getOffer(uint256(_identifier));
+            ,
+            ,
+            address[] memory incomingAssets,
+            uint256[] memory incomingAmounts,
+            address[] memory outgoingAssets,
+            uint256[] memory outgoingAmounts
+        ) = __decodeRuleArgs(_encodedArgs);
 
-        uint256 fillMakerQuantity = mul(_fillTakerQuantity, maxMakerQuantity) / maxTakerQuantity;
-        return checkPriceToleranceTakeOrder(
-            makerAsset, takerAsset, fillMakerQuantity, _fillTakerQuantity
-        );
+        uint256 incomingAssetsValue = __calcCumulativeAssetsValue(incomingAssets, incomingAmounts);
+        uint256 outgoingAssetsValue = __calcCumulativeAssetsValue(outgoingAssets, outgoingAmounts);
+
+        // Only check case where there is more outgoing value
+        if (incomingAssetsValue >= outgoingAssetsValue) return true;
+
+        // Tolerance threshold is 'value defecit over total value of incoming assets'
+        uint256 diff = sub(outgoingAssetsValue, incomingAssetsValue);
+        if (mul(diff, DIVISOR) / incomingAssetsValue <= tolerance) return true;
+
+        return false;
     }
 
-    function takeOrder(
-        address[5] memory _addresses,
-        uint256[3] memory _values,
-        bytes32 _identifier
-    ) public view returns (bool) {
-        if (_identifier == 0x0) {
-            return takeGenericOrder(_addresses[2], _addresses[3], _values);
-        } else {
-            return takeOasisDex(_addresses[4], _identifier, _values[2]);
+    function __calcCumulativeAssetsValue(address[] memory _assets, uint256[] memory _amounts)
+        private
+        view
+        returns (uint256 cumulativeValue_)
+    {
+        Hub hub = Hub(Spoke(msg.sender).HUB());
+        address denominationAsset = Shares(hub.shares()).DENOMINATION_ASSET();
+
+        for (uint256 i = 0; i < _assets.length; i++) {
+            (
+                uint256 assetValue,
+                bool isValid
+            ) = IValueInterpreter(IRegistry(hub.REGISTRY()).valueInterpreter())
+                    .calcLiveAssetValue(
+                    _assets[i],
+                    _amounts[i],
+                    denominationAsset
+                );
+            require(assetValue > 0 && isValid, "calcGav: No valid price available for asset");
+            cumulativeValue_ = add(cumulativeValue_, assetValue);
         }
     }
-
-    function rule(
-        bytes4 _sig,
-        address[5] calldata _addresses,
-        uint256[3] calldata _values,
-        bytes32 _identifier
-    ) external returns (bool) {
-        if (_sig != TAKE_ORDER) revert("Signature was not TakeOrder");
-        return takeOrder(_addresses, _values, _identifier);
-    }
-
-    function position() external pure returns (Applied) { return Applied.pre; }
-    function identifier() external pure returns (string memory) { return 'PriceTolerance'; }
 }

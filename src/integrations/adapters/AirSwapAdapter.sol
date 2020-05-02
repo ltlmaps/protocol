@@ -8,46 +8,20 @@ import "../libs/OrderTaker.sol";
 /// @author Melon Council DAO <security@meloncoucil.io>
 /// @notice Adapter between Melon and AirSwap
 contract AirSwapAdapter is OrderTaker {
-    /// @notice Extract arguments for risk management validations of a takeOrder call
-    /// @param _encodedArgs Encoded parameters passed from client side
-    /// @return riskManagementAddresses_ needed addresses for risk management
-    /// - [0] Maker address
-    /// - [1] Taker address
-    /// - [2] Maker asset
-    /// - [3] Taker asset
-    /// - [4] Maker fee asset
-    /// - [5] Taker fee asset
-    /// @return riskManagementValues_ needed values for risk management
-    /// - [0] Maker asset amount
-    /// - [1] Taker asset amount
-    /// - [2] Taker asset fill amount
-    function __extractTakeOrderRiskManagementArgs(
-        address _targetExchange,
-        bytes memory _encodedArgs
-    )
-        internal
+    function parseIncomingAssets(bytes4 _selector, bytes calldata _encodedArgs)
+        external
         view
         override
-        returns (address[6] memory riskManagementAddresses_, uint256[3] memory riskManagementValues_)
+        returns (address[] memory incomingAssets_)
     {
-        (
-            address[6] memory orderAddresses,
-            uint256[6] memory orderValues, , , ,
-        ) = __decodeTakeOrderArgs(_encodedArgs);
-
-        riskManagementAddresses_ = [
-            orderAddresses[0],
-            orderAddresses[2],
-            orderAddresses[1],
-            orderAddresses[3],
-            address(0),
-            address(0)
-        ];
-        riskManagementValues_ = [
-            orderValues[2],
-            orderValues[4],
-            orderValues[4]
-        ];
+        if (_selector == TAKE_ORDER_SELECTOR) {
+            (address[6] memory orderAddresses,,,,,) = __decodeTakeOrderArgs(_encodedArgs);
+            incomingAssets_ = new address[](1);
+            incomingAssets_[0] = orderAddresses[1];
+        }
+        else {
+            revert("parseIncomingAssets: _selector invalid");
+        }
     }
 
     /// @notice Take a market order on AirSwap (takeOrder)
@@ -135,20 +109,7 @@ contract AirSwapAdapter is OrderTaker {
         internal
         view
         override
-    {
-        (
-            address[6] memory orderAddresses,
-            uint256[6] memory orderValues, , , ,
-        ) = __decodeTakeOrderArgs(_encodedArgs);
-
-        IRegistry registry = __getRegistry();
-        require(registry.assetIsRegistered(
-            orderAddresses[1]), 'Maker asset not registered'
-        );
-        require(registry.assetIsRegistered(
-            orderAddresses[3]), 'Taker asset not registered'
-        );
-    }
+    {}
 
     // PRIVATE FUNCTIONS
 

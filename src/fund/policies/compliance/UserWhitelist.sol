@@ -1,13 +1,12 @@
 pragma solidity 0.6.8;
 
 import "../../../dependencies/DSAuth.sol";
+import "./BuySharesPolicyBase.sol";
 
 /// @title UserWhitelist Contract
 /// @author Melon Council DAO <security@meloncoucil.io>
 /// @notice Investors can be added and removed from whitelist
-contract UserWhitelist is DSAuth {
-    enum Applied { pre, post }
-
+contract UserWhitelist is DSAuth, BuySharesPolicyBase {
     event ListAddition(address indexed who);
     event ListRemoval(address indexed who);
 
@@ -28,21 +27,19 @@ contract UserWhitelist is DSAuth {
     }
 
     function batchAddToWhitelist(address[] memory _members) public auth {
-        for (uint i = 0; i < _members.length; i++) {
+        for (uint256 i = 0; i < _members.length; i++) {
             addToWhitelist(_members[i]);
         }
     }
 
     function batchRemoveFromWhitelist(address[] memory _members) public auth {
-        for (uint i = 0; i < _members.length; i++) {
+        for (uint256 i = 0; i < _members.length; i++) {
             removeFromWhitelist(_members[i]);
         }
     }
 
-    function rule(bytes4 sig, address[5] calldata addresses, uint[3] calldata values, bytes32 identifier) external returns (bool) {
-        return whitelisted[addresses[0]];
+    function rule(bytes calldata _encodedArgs) external view override returns (bool) {
+        (address buyer,,,) = __decodeRuleArgs(_encodedArgs);
+        return whitelisted[buyer];
     }
-
-    function position() external pure returns (Applied) { return Applied.pre; }
-    function identifier() external pure returns (string memory) { return 'UserWhitelist'; }
 }

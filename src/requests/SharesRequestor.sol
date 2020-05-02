@@ -376,22 +376,20 @@ contract SharesRequestor is DSMath, TokenUser, AmguConsumer {
         IShares shares = IShares(IHub(_hub).shares());
         IPolicyManager policyManager = IPolicyManager(IHub(_hub).policyManager());
 
-        // Validate against fund policies
-        // TODO: pass in all relevant values to buying shares
+        uint256 costInInvestmentAsset = shares.getSharesCostInAsset(
+            _sharesQuantity,
+            _investmentAsset
+        );
+
+        // Pre-validate against fund policies
         policyManager.preValidate(
-            bytes4(keccak256("buyShares(address,address,uint256)")),
-            [_buyer, address(0), address(0), _investmentAsset, address(0)],
-            [uint256(0), uint256(0), uint256(0)],
-            bytes32(0)
+            IPolicyManager.PolicyHook.BuyShares,
+            abi.encode(_buyer, _investmentAsset, costInInvestmentAsset, _sharesQuantity)
         );
 
         // Buy the shares via Shares
         // We can grant exact approval to Shares rather than using _maxInvestmentAmount
         // since we use the same function to get the cost
-        uint256 costInInvestmentAsset = shares.getSharesCostInAsset(
-            _sharesQuantity,
-            _investmentAsset
-        );
         __increaseApproval(
             _investmentAsset,
             address(shares),
@@ -407,12 +405,10 @@ contract SharesRequestor is DSMath, TokenUser, AmguConsumer {
             "__validateAndBuyShares: Used more investmentAsset than expected"
         );
 
-        // TODO: pass in all relevant values to buying shares
+        // Post-validate against fund policies
         policyManager.postValidate(
-            bytes4(keccak256("buyShares(address,address,uint256)")),
-            [_buyer, address(0), address(0), _investmentAsset, address(0)],
-            [uint256(0), uint256(0), uint256(0)],
-            bytes32(0)
+            IPolicyManager.PolicyHook.BuyShares,
+            abi.encode(_buyer, _investmentAsset, costInInvestmentAsset, _sharesQuantity)
         );
     }
 
