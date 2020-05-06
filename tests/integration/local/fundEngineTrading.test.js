@@ -14,7 +14,8 @@ import getAccounts from '~/deploy/utils/getAccounts';
 import { BNExpMul } from '~/tests/utils/BNmath';
 import {
   CONTRACT_NAMES,
-  EMPTY_ADDRESS,
+  POLICY_HOOKS,
+  POLICY_HOOK_EXECUTION_TIMES
 } from '~/tests/utils/constants';
 import { getFunctionSignature } from '~/tests/utils/metadata';
 import { encodeTakeOrderArgs } from '~/tests/utils/formatting';
@@ -84,8 +85,12 @@ test('Setup a fund with amgu charged to seed Melon Engine', async () => {
 
   await send(
     policyManager,
-    'register',
-    [takeOrderSignatureBytes, priceTolerance.options.address],
+    'enablePolicy',
+    [
+      priceTolerance.options.address,
+      POLICY_HOOKS.CALL_ON_INTEGRATION,
+      POLICY_HOOK_EXECUTION_TIMES.POST_VALIDATE
+    ],
     managerTxOpts
   );
 });

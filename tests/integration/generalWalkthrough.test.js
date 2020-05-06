@@ -8,13 +8,12 @@
  * @test TODO: Redeem shares?
  */
 
-import { encodeFunctionSignature } from 'web3-eth-abi';
 import { BN, toWei } from 'web3-utils';
 import { deploy, call, send } from '~/deploy/utils/deploy-contract';
 import { partialRedeploy } from '~/deploy/scripts/deploy-system';
 import { BNExpDiv } from '~/tests/utils/BNmath';
 import getAccounts from '~/deploy/utils/getAccounts';
-import { CONTRACT_NAMES, EMPTY_ADDRESS } from '~/tests/utils/constants';
+import { CONTRACT_NAMES, POLICY_HOOKS, POLICY_HOOK_EXECUTION_TIMES } from '~/tests/utils/constants';
 import { stringToBytes } from '~/tests/utils/formatting';
 import { investInFund, getFundComponents } from '~/tests/utils/fund';
 import { getEventFromLogs, getFunctionSignature } from '~/tests/utils/metadata';
@@ -111,19 +110,27 @@ beforeAll(async () => {
     CONTRACT_NAMES.ORDER_TAKER,
     'takeOrder',
   );
-  await send(fund.policyManager, 'register', [
-    encodeFunctionSignature(takeOrderFunctionSig),
-    priceTolerance.options.address,
-  ], managerTxOpts);
-
-  const buySharesFunctionSig = getFunctionSignature(
-    CONTRACT_NAMES.SHARES,
-    'buyShares',
+  await send(
+    fund.policyManager,
+    'enablePolicy',
+    [
+      priceTolerance.options.address,
+      POLICY_HOOKS.CALL_ON_INTEGRATION,
+      POLICY_HOOK_EXECUTION_TIMES.POST_VALIDATE
+    ],
+    managerTxOpts
   );
-  await send(fund.policyManager, 'register', [
-    encodeFunctionSignature(buySharesFunctionSig),
-    userWhitelist.options.address,
-  ], managerTxOpts);
+
+  await send(
+    fund.policyManager,
+    'enablePolicy',
+    [
+      userWhitelist.options.address,
+      POLICY_HOOKS.BUY_SHARES,
+      POLICY_HOOK_EXECUTION_TIMES.PRE_VALIDATE
+    ],
+    managerTxOpts
+  );
 });
 
 test('Request shares fails for whitelisted user with no allowance', async () => {
@@ -156,7 +163,7 @@ test('Buying shares (initial investment) fails for user not on whitelist', async
       [hub.options.address, weth.options.address, offeredValue, wantedShares],
       { ...investorTxOpts, value: amguAmount }
     )
-  ).rejects.toThrowFlexible("Rule evaluated to false: UserWhitelist");
+  ).rejects.toThrowFlexible("Rule evaluated to false");
 });
 
 test('Buying shares (initial investment) succeeds for whitelisted user with allowance', async () => {

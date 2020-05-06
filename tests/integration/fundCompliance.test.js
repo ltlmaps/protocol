@@ -11,7 +11,7 @@ import { toWei } from 'web3-utils';
 import { call, send } from '~/deploy/utils/deploy-contract';
 import { partialRedeploy } from '~/deploy/scripts/deploy-system';
 import { deploy } from '~/deploy/utils/deploy-contract';
-import { CONTRACT_NAMES } from '~/tests/utils/constants';
+import { CONTRACT_NAMES, POLICY_HOOKS, POLICY_HOOK_EXECUTION_TIMES } from '~/tests/utils/constants';
 import { investInFund, setupFundWithParams } from '~/tests/utils/fund';
 import getAccounts from '~/deploy/utils/getAccounts';
 import { getFunctionSignature } from '~/tests/utils/metadata';
@@ -63,8 +63,12 @@ describe('Fund 1: user whitelist', () => {
 
     await send(
       fund.policyManager,
-      'register',
-      [encodeFunctionSignature(buySharesFunctionSig), userWhitelist.options.address],
+      'enablePolicy',
+      [
+        userWhitelist.options.address,
+        POLICY_HOOKS.BUY_SHARES,
+        POLICY_HOOK_EXECUTION_TIMES.PRE_VALIDATE
+      ],
       managerTxOpts
     );
 
@@ -80,19 +84,8 @@ describe('Fund 1: user whitelist', () => {
   test('Confirm policies have been set', async () => {
     const { policyManager } = fund;
 
-    const buySharesPoliciesRes = await call(
-      policyManager,
-      'getPoliciesBySig',
-      [encodeFunctionSignature(buySharesFunctionSig)],
-    );
-    const buySharesPolicyAddresses = [
-      ...buySharesPoliciesRes[0],
-      ...buySharesPoliciesRes[1]
-    ];
-
-    expect(
-      buySharesPolicyAddresses.includes(userWhitelist.options.address)
-    ).toBe(true);
+    const policies = await call (policyManager, 'getEnabledPolicies');
+    expect(policies).toContain(userWhitelist.options.address);
   });
 
   test('Bad request investment: user not on whitelist', async () => {
@@ -112,7 +105,7 @@ describe('Fund 1: user whitelist', () => {
           tokenPrices: [toWei('1', 'ether')]
         }
       })
-    ).rejects.toThrowFlexible("Rule evaluated to false: UserWhitelist");
+    ).rejects.toThrowFlexible("Rule evaluated to false");
   });
 
   test('Good request investment: user is whitelisted', async () => {

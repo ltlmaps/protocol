@@ -16,6 +16,9 @@ export const ENCODING_TYPES = {
   MINIMAL: ['address', 'uint256', 'address', 'uint256'], // a general and minimal type
 }
 
+export const POLICY_HOOKS = { BUY_SHARES: 0, CALL_ON_INTEGRATION: 1 };
+
+export const POLICY_HOOK_EXECUTION_TIMES = { PRE_VALIDATE: 0, POST_VALIDATE: 1 };
 
 export const CONTRACT_NAMES = {
   ADDRESS_LIST: 'AddressList',
