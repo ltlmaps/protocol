@@ -382,7 +382,7 @@ contract SharesRequestor is DSMath, TokenUser, AmguConsumer {
         );
 
         // Pre-validate against fund policies
-        policyManager.preValidate(
+        policyManager.preValidatePolicy(
             IPolicyManager.PolicyHook.BuyShares,
             abi.encode(_buyer, _investmentAsset, costInInvestmentAsset, _sharesQuantity)
         );
@@ -406,7 +406,7 @@ contract SharesRequestor is DSMath, TokenUser, AmguConsumer {
         );
 
         // Post-validate against fund policies
-        policyManager.postValidate(
+        policyManager.postValidatePolicy(
             IPolicyManager.PolicyHook.BuyShares,
             abi.encode(_buyer, _investmentAsset, costInInvestmentAsset, _sharesQuantity)
         );

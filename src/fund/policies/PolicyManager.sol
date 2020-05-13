@@ -1,6 +1,7 @@
 pragma solidity 0.6.8;
 pragma experimental ABIEncoderV2;
 
+import "../../dependencies/libs/EnumerableSet.sol";
 import "../hub/Spoke.sol";
 import "./IPolicy.sol";
 import "./IPolicyManager.sol";
@@ -9,60 +10,88 @@ import "./IPolicyManager.sol";
 /// @author Melon Council DAO <security@meloncoucil.io>
 /// @notice Manages policies by registering and validating policies
 contract PolicyManager is IPolicyManager, Spoke {
-    event PolicyEnabled(
-        address policy,
-        PolicyHook hook,
-        PolicyHookExecutionTime executionTime
-    );
+    using EnumerableSet for EnumerableSet.AddressSet;
 
-    // TODO: add something like sigs; either here, or in the policies themselves
-    // E.g., maybe max concentration doesn't apply to redeeming ctokens, but it would be called before lending tokens
-    struct PolicyInfo {
-        PolicyHook hook;
-        PolicyHookExecutionTime executionTime;
-    }
-    address[] enabledPolicies;
-    mapping (address => PolicyInfo) public policyToPolicyInfo;
+    event PolicyEnabled(address indexed policy, bytes encodedSettings);
 
-    // TODO: enable policies here?
+    EnumerableSet.AddressSet private enabledPolicies;
+
     constructor (address _hub) public Spoke(_hub) {}
 
-    // TODO: pull params from Registry when shared contracts
-    function enablePolicy(
-        address _policy,
-        PolicyHook _hook,
-        PolicyHookExecutionTime _executionTime
-    )
+    /// @notice Enable policies for use in the fund
+    /// @param _policies The policies to enable
+    /// @param _encodedSettings The encoded settings with which a fund uses a policy
+    function enablePolicies(address[] calldata _policies, bytes[] calldata _encodedSettings)
+        external
+        override
+    {
+        // Access
+        require(
+            msg.sender == __getHub().FUND_FACTORY(),
+            "Only FundFactory can make this call"
+        );
+        // Sanity check
+        require(_policies.length > 0, "enablePolicies: _policies cannot be empty");
+        require(
+            _policies.length == _encodedSettings.length,
+            "enablePolicies: array lengths unequal"
+        );
+
+        // Enable each policy with settings
+        IRegistry registry = __getRegistry();
+        for (uint256 i = 0; i < _policies.length; i++) {
+            IPolicy policy = IPolicy(_policies[i]);
+            require(
+                registry.policyIsRegistered(address(policy)),
+                "enablePolicies: Policy is not on Registry"
+            );
+            require(
+                !__policyIsEnabled(address(policy)),
+                "enablePolicies: Policy is already enabled"
+            );
+
+            // Add policy
+            EnumerableSet.add(enabledPolicies, address(policy));
+
+            // Set fund config on policy
+            policy.addFundSettings(_encodedSettings[i]);
+
+            emit PolicyEnabled(address(policy), _encodedSettings[i]);
+        }
+    }
+
+    function preValidatePolicy(PolicyHook _hook, bytes calldata _encodedArgs) external view override {
+        __validatePolicy(_hook, PolicyHookExecutionTime.Pre, _encodedArgs);
+    }
+
+    function postValidatePolicy(PolicyHook _hook, bytes calldata _encodedArgs) external view override {
+        __validatePolicy(_hook, PolicyHookExecutionTime.Post, _encodedArgs);
+    }
+
+    function updatePolicySettings(address _policy, bytes calldata _encodedSettings)
         external
         onlyManager
     {
-        // TODO: sanity check other params
-        require(_policy != address(0), "enablePolicy: _policy cannot be empty");
-
-        policyToPolicyInfo[_policy] = PolicyInfo({
-            hook: _hook,
-            executionTime: _executionTime
-        });
-        enabledPolicies.push(_policy);
-
-        emit PolicyEnabled(_policy, _hook, _executionTime);
+        IPolicy(_policy).updateFundSettings(_encodedSettings);
     }
 
-    function getEnabledPolicies() external view returns (address[] memory) {
-        return enabledPolicies;
-    }
+    // PUBLIC FUNCTIONS
 
-    function preValidate(PolicyHook _hook, bytes calldata _encodedArgs) external override {
-        __validate(_hook, PolicyHookExecutionTime.Pre, _encodedArgs);
-    }
-
-    function postValidate(PolicyHook _hook, bytes calldata _encodedArgs) external override {
-        __validate(_hook, PolicyHookExecutionTime.Post, _encodedArgs);
+    /// @notice Get a list of enabled policies
+    /// @return An array of enabled policy addresses
+    function getEnabledPolicies() public view returns (address[] memory) {
+        return EnumerableSet.enumerate(enabledPolicies);
     }
 
     // PRIVATE FUNCTIONS
 
-    function __validate(
+    /// @notice Check is a policy is enabled for the fund
+    function __policyIsEnabled(address _policy) private view returns (bool) {
+        return EnumerableSet.contains(enabledPolicies, _policy);
+    }
+
+    /// @notice Helper to validate policies
+    function __validatePolicy(
         PolicyHook _hook,
         PolicyHookExecutionTime _executionTime,
         bytes memory _encodedArgs
@@ -70,16 +99,18 @@ contract PolicyManager is IPolicyManager, Spoke {
         private
         view
     {
-        // TODO: consider revising storage to eliminate conditional and reduce loop length
-        for (uint i = 0; i < enabledPolicies.length; i++) {
-            address policy = enabledPolicies[i];
+        address[] memory policies = getEnabledPolicies();
+        for (uint i = 0; i < policies.length; i++) {
             if (
-                policyToPolicyInfo[policy].hook == _hook &&
-                policyToPolicyInfo[policy].executionTime == _executionTime
+                IPolicy(policies[i]).policyHook() == _hook &&
+                IPolicy(policies[i]).policyHookExecutionTime() == _executionTime
             ) {
                 require(
-                    IPolicy(policy).rule(_encodedArgs),
-                    "Rule evaluated to false" // TODO: consider implementing better reason string
+                    IPolicy(policies[i]).validateRule(_encodedArgs),
+                    string(abi.encodePacked(
+                        "Rule evaluated to false: ",
+                        IPolicy(policies[i]).identifier()
+                    ))
                 );
             }
         }

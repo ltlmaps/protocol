@@ -1,25 +1,42 @@
 pragma solidity 0.6.8;
 
-import "../AddressList.sol";
-import "./CallOnIntegrationPostValidatePolicyBase.sol";
+import "../utils/CallOnIntegrationPostValidatePolicyBase.sol";
+import "../utils/AddressListPolicyMixin.sol";
 
 /// @title AssetBlacklist Contract
 /// @author Melon Council DAO <security@meloncoucil.io>
 /// @notice A blacklist of assets to add to a fund's vault
 /// @dev Assets can be added but not removed from blacklist
-contract AssetBlacklist is AddressList, CallOnIntegrationPostValidatePolicyBase {
-    constructor(address[] memory _assets) AddressList(_assets) public {}
+contract AssetBlacklist is CallOnIntegrationPostValidatePolicyBase, AddressListPolicyMixin {
+    constructor(address _registry) public PolicyBase(_registry) {}
 
-    function addToBlacklist(address _asset) external auth {
-        require(!isMember(_asset), "Asset already in blacklist");
-        list[_asset] = true;
-        mirror.push(_asset);
+    /// @notice Add the initial policy settings for a fund
+    /// @param _encodedSettings Encoded settings to apply to a fund
+    /// @dev A fund's PolicyManager is always the sender
+    /// @dev Only called once, on PolicyManager.enablePolicies()
+    function addFundSettings(bytes calldata _encodedSettings) external override onlyPolicyManager {
+        __addToList(abi.decode(_encodedSettings, (address[])));
     }
 
-    function rule(bytes calldata _encodedArgs) external view override returns (bool) {
+    /// @notice Provides a constant string identifier for a policy
+    function identifier() external pure override returns (string memory) {
+        return "ASSET_BLACKLIST";
+    }
+
+    /// @notice Apply the rule with specified paramters, in the context of a fund
+    /// @param _encodedArgs Encoded args with which to validate the rule
+    /// @return True if the rule passes
+    /// @dev A fund's PolicyManager is always the sender
+    function validateRule(bytes calldata _encodedArgs)
+        external
+        view
+        override
+        onlyPolicyManager
+        returns (bool)
+    {
         (,,address[] memory incomingAssets,,,) = __decodeRuleArgs(_encodedArgs);
         for (uint256 i = 0; i < incomingAssets.length; i++) {
-            if (isMember(incomingAssets[i])) return false;
+            if (isInList(msg.sender, incomingAssets[i])) return false;
         }
 
         return true;

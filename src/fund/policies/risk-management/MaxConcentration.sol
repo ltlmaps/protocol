@@ -1,58 +1,92 @@
 pragma solidity 0.6.8;
 
-import "./CallOnIntegrationPostValidatePolicyBase.sol";
-import "../../hub/Hub.sol";
-import "../../hub/Spoke.sol";
-import "../../shares/Shares.sol";
 import "../../../dependencies/DSMath.sol";
-import "../../../prices/IValueInterpreter.sol";
+import "../../../prices/ValueInterpreter.sol";
+import "../../shares/Shares.sol";
+import "../../vault/Vault.sol";
+import "../utils/CallOnIntegrationPostValidatePolicyBase.sol";
 
 /// @title MaxConcentration Contract
 /// @author Melon Council DAO <security@meloncoucil.io>
 /// @notice Validates concentration limitations per asset for its equity of a particular fund
 contract MaxConcentration is DSMath, CallOnIntegrationPostValidatePolicyBase {
-    uint256 internal constant ONE_HUNDRED_PERCENT = 10 ** 18;  // 100%
-    uint256 public maxConcentration;
+    event MaxConcentrationSet(address policyManager, uint256 value);
 
-    constructor(uint256 _maxConcentration) public {
+    uint256 internal constant ONE_HUNDRED_PERCENT = 10 ** 18;  // 100%
+
+    mapping (address => uint256) public policyManagerToMaxConcentration;
+
+    constructor(address _registry) public PolicyBase(_registry) {}
+
+    // EXTERNAL FUNCTIONS
+
+    /// @notice Add the initial policy settings for a fund
+    /// @param _encodedSettings Encoded settings to apply to a fund
+    /// @dev A fund's PolicyManager is always the sender
+    /// @dev Only called once, on PolicyManager.enablePolicies()
+    function addFundSettings(bytes calldata _encodedSettings) external override onlyPolicyManager {
+        uint256 maxConcentration = abi.decode(_encodedSettings, (uint256));
+        require(maxConcentration > 0, "addFundSettings: maxConcentration must be greater than 0");
         require(
-            _maxConcentration <= ONE_HUNDRED_PERCENT,
-            "Max concentration cannot exceed 100%"
+            maxConcentration <= ONE_HUNDRED_PERCENT,
+            "addFundSettings: maxConcentration cannot exceed 100%"
         );
-        maxConcentration = _maxConcentration;
+
+        policyManagerToMaxConcentration[msg.sender] = maxConcentration;
+        emit MaxConcentrationSet(msg.sender, maxConcentration);
+    }
+
+    /// @notice Provides a constant string identifier for a policy
+    function identifier() external pure override returns (string memory) {
+        return "MAX_CONCENTRATION";
     }
 
     // TODO: Use live rates instead of canonical rates for fund and asset GAV
-    // TODO: Need to assert price validity?
-    function rule(bytes calldata _encodedArgs) external view override returns (bool) {
-        Hub hub = Hub(Spoke(msg.sender).HUB());
-        Shares shares = Shares(hub.shares());
-        address denominationAsset = shares.DENOMINATION_ASSET();
-
-        uint256 totalGav = shares.calcGav();
+    /// @notice Apply the rule with specified paramters, in the context of a fund
+    /// @param _encodedArgs Encoded args with which to validate the rule
+    /// @return True if the rule passes
+    /// @dev A fund's PolicyManager is always the sender
+    function validateRule(bytes calldata _encodedArgs)
+        external
+        view
+        override
+        onlyPolicyManager
+        returns (bool)
+    {
         (,,address[] memory incomingAssets,,,) = __decodeRuleArgs(_encodedArgs);
-        uint256[] memory incomingAssetBalances = IVault(hub.vault()).getAssetBalances(incomingAssets);
+        Shares shares = Shares(__getShares());
+        address denominationAsset = shares.DENOMINATION_ASSET();
+        uint256 totalGav = shares.calcGav();
+        uint256[] memory incomingAssetBalances = Vault(payable(__getVault()))
+            .getAssetBalances(incomingAssets);
+
         for (uint256 i = 0; i < incomingAssets.length; i++) {
             if (incomingAssets[i] == denominationAsset) continue;
 
             (
                 uint256 assetGav,
                 bool isValid
-            ) = IValueInterpreter(IRegistry(hub.REGISTRY()).valueInterpreter())
+            ) = ValueInterpreter(__getValueInterpreter())
                     .calcCanonicalAssetValue(
                         incomingAssets[i],
                         incomingAssetBalances[i],
                         denominationAsset
                     );
 
-            require(assetGav > 0 && isValid, "calcGav: No valid price available for asset");
+            require(assetGav > 0 && isValid, "validateRule: No valid price available for asset");
 
-            if (__calcConcentration(assetGav, totalGav) > maxConcentration) return false;
+            if (
+                __calcConcentration(assetGav, totalGav) >
+                policyManagerToMaxConcentration[msg.sender]
+            ) return false;
         }
 
         return true;
     }
 
+    // PRIVATE FUNCTIONS
+
+    /// @notice Helper to calculate a percentage
     function __calcConcentration(uint256 _assetGav, uint256 _totalGav)
         private
         pure

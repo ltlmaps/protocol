@@ -1,29 +1,57 @@
 pragma solidity 0.6.8;
 
-import "./CallOnIntegrationPostValidatePolicyBase.sol";
-import "../../hub/Hub.sol";
-import "../../hub/Spoke.sol";
 import "../../../dependencies/DSMath.sol";
 import "../../../fund/shares/Shares.sol";
-import "../../../prices/IValueInterpreter.sol";
+import "../../../prices/ValueInterpreter.sol";
 import "../../../registry/Registry.sol";
+import "../utils/CallOnIntegrationPostValidatePolicyBase.sol";
 
 /// @title PriceTolerance Contract
 /// @author Melon Council DAO <security@meloncoucil.io>
 /// @notice Validate the price tolerance of a trade
-contract PriceTolerance is DSMath, CallOnIntegrationPostValidatePolicyBase {
-    uint256 public tolerance;
+contract PriceTolerance is DSMath, PolicyBase, CallOnIntegrationPostValidatePolicyBase {
+    event PriceToleranceSet(address policyManager, uint256 value);
 
-    uint256 constant MULTIPLIER = 10 ** 16; // to give effect of a percentage
-    uint256 constant DIVISOR = 10 ** 18;
+    uint256 internal constant ONE_HUNDRED_PERCENT = 10 ** 18;  // 100%
 
-    // _tolerance: 10 equals to 10% of tolerance
-    constructor(uint256 _tolerancePercent) public {
-        require(_tolerancePercent <= 100, "Tolerance range is 0% - 100%");
-        tolerance = mul(_tolerancePercent, MULTIPLIER);
+    mapping (address => uint256) public policyManagerToPriceTolerance;
+
+    constructor(address _registry) public PolicyBase(_registry) {}
+
+    // EXTERNAL FUNCTIONS
+
+    /// @notice Add the initial policy settings for a fund
+    /// @param _encodedSettings Encoded settings to apply to a fund
+    /// @dev A fund's PolicyManager is always the sender
+    /// @dev Only called once, on PolicyManager.enablePolicies()
+    function addFundSettings(bytes calldata _encodedSettings) external override onlyPolicyManager {
+        uint256 priceTolerance = abi.decode(_encodedSettings, (uint256));
+        require(priceTolerance > 0, "addFundSettings: priceTolerance must be greater than 0");
+        require(
+            priceTolerance <= ONE_HUNDRED_PERCENT,
+            "addFundSettings: priceTolerance cannot exceed 100%"
+        );
+
+        policyManagerToPriceTolerance[msg.sender] = priceTolerance;
+        emit PriceToleranceSet(msg.sender, priceTolerance);
     }
 
-    function rule(bytes calldata _encodedArgs) external view override returns (bool) {
+    /// @notice Provides a constant string identifier for a policy
+    function identifier() external pure override returns (string memory) {
+        return "PRICE_TOLERANCE";
+    }
+
+    /// @notice Apply the rule with specified paramters, in the context of a fund
+    /// @param _encodedArgs Encoded args with which to validate the rule
+    /// @return True if the rule passes
+    /// @dev A fund's PolicyManager is always the sender
+    function validateRule(bytes calldata _encodedArgs)
+        external
+        view
+        override
+        onlyPolicyManager
+        returns (bool)
+    {
         (
             ,
             ,
@@ -41,30 +69,38 @@ contract PriceTolerance is DSMath, CallOnIntegrationPostValidatePolicyBase {
 
         // Tolerance threshold is 'value defecit over total value of incoming assets'
         uint256 diff = sub(outgoingAssetsValue, incomingAssetsValue);
-        if (mul(diff, DIVISOR) / incomingAssetsValue <= tolerance) return true;
+        if (
+            mul(diff, ONE_HUNDRED_PERCENT) / incomingAssetsValue <=
+            policyManagerToPriceTolerance[msg.sender]
+        ) return true;
 
         return false;
     }
 
+    // PRIVATE FUNCTIONS
+
+    /// @notice Helper to calculate the cumulative value of a group of assets
+    /// relative the fund's denomination asset
     function __calcCumulativeAssetsValue(address[] memory _assets, uint256[] memory _amounts)
         private
         view
         returns (uint256 cumulativeValue_)
     {
-        Hub hub = Hub(Spoke(msg.sender).HUB());
-        address denominationAsset = Shares(hub.shares()).DENOMINATION_ASSET();
+        address denominationAsset = Shares(__getShares()).DENOMINATION_ASSET();
 
         for (uint256 i = 0; i < _assets.length; i++) {
             (
                 uint256 assetValue,
                 bool isValid
-            ) = IValueInterpreter(IRegistry(hub.REGISTRY()).valueInterpreter())
-                    .calcLiveAssetValue(
-                    _assets[i],
-                    _amounts[i],
-                    denominationAsset
-                );
-            require(assetValue > 0 && isValid, "calcGav: No valid price available for asset");
+            ) = ValueInterpreter(__getValueInterpreter()).calcLiveAssetValue(
+                _assets[i],
+                _amounts[i],
+                denominationAsset
+            );
+            require(
+                assetValue > 0 && isValid,
+                "__calcCumulativeAssetsValue: No valid price available for asset"
+            );
             cumulativeValue_ = add(cumulativeValue_, assetValue);
         }
     }

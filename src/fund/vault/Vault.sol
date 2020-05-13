@@ -133,7 +133,7 @@ contract Vault is IVault, TokenUser, Spoke {
 
         // Pre-validate against fund policies
         IPolicyManager policyManager = __getPolicyManager();
-        policyManager.preValidate(
+        policyManager.preValidatePolicy(
             IPolicyManager.PolicyHook.CallOnIntegration,
             abi.encode(selector, _adapter)
         );
@@ -159,7 +159,7 @@ contract Vault is IVault, TokenUser, Spoke {
         );
 
         // Post-validate against fund policies
-        policyManager.postValidate(
+        policyManager.postValidatePolicy(
             IPolicyManager.PolicyHook.CallOnIntegration,
             abi.encode(
                 selector,

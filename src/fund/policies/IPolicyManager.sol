@@ -1,13 +1,15 @@
 pragma solidity 0.6.8;
+pragma experimental ABIEncoderV2;
 
 /// @title PolicyManager Interface
 /// @author Melon Council DAO <security@meloncoucil.io>
 interface IPolicyManager {
-    enum PolicyHook { BuyShares, CallOnIntegration }
-    enum PolicyHookExecutionTime { Pre, Post }
+    enum PolicyHook { None, BuyShares, CallOnIntegration }
+    enum PolicyHookExecutionTime { None, Pre, Post }
 
-    function postValidate(PolicyHook, bytes calldata) external;
-    function preValidate(PolicyHook, bytes calldata) external;
+    function enablePolicies(address[] calldata, bytes[] calldata) external;
+    function postValidatePolicy(PolicyHook, bytes calldata) external view;
+    function preValidatePolicy(PolicyHook, bytes calldata) external view;
 }
 
 /// @title PolicyManagerFactory Interface
@@ -15,4 +17,3 @@ interface IPolicyManager {
 interface IPolicyManagerFactory {
     function createInstance(address _hub) external returns (address);
 }
-

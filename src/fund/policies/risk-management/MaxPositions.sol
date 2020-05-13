@@ -1,23 +1,48 @@
 pragma solidity 0.6.8;
 
-import "../../hub/Spoke.sol";
 import "../../vault/Vault.sol";
-import "./CallOnIntegrationPostValidatePolicyBase.sol";
+import "../utils/CallOnIntegrationPostValidatePolicyBase.sol";
 
 /// @title MaxPositions Contract
 /// @author Melon Council DAO <security@meloncoucil.io>
 /// @notice Validates the allowed number of owned assets of a particular fund
 contract MaxPositions is CallOnIntegrationPostValidatePolicyBase {
-    uint256 public maxPositions;
+    event MaxPositionsSet(address policyManager, uint256 value);
 
-    /// @dev _maxPositions = 10 means max 10 different asset tokens
-    /// @dev _maxPositions = 0 means no asset tokens are investable
-    constructor(uint256 _maxPositions) public { maxPositions = _maxPositions; }
+    mapping (address => uint256) public policyManagerToMaxPositions;
 
-    // TODO: Revisit allowing denomination asset to pass,
-    // though there are problems with ownedAssets becoming larger than maxPositions
-    function rule(bytes calldata) external view override returns (bool) {
-        IHub hub = IHub(Spoke(msg.sender).HUB());
-        return Vault(payable(hub.vault())).getOwnedAssets().length <= maxPositions;
+    constructor(address _registry) public PolicyBase(_registry) {}
+
+    // EXTERNAL FUNCTIONS
+
+    /// @notice Add the initial policy settings for a fund
+    /// @param _encodedSettings Encoded settings to apply to a fund
+    /// @dev A fund's PolicyManager is always the sender
+    /// @dev Only called once, on PolicyManager.enablePolicies()
+    function addFundSettings(bytes calldata _encodedSettings) external override onlyPolicyManager {
+        uint256 maxPositions = abi.decode(_encodedSettings, (uint256));
+        require(maxPositions > 1, "addFundSettings: maxPositions must be greater than 1");
+
+        policyManagerToMaxPositions[msg.sender] = maxPositions;
+        emit MaxPositionsSet(msg.sender, maxPositions);
+    }
+
+    /// @notice Provides a constant string identifier for a policy
+    function identifier() external pure override returns (string memory) {
+        return "MAX_POSITIONS";
+    }
+
+    /// @notice Apply the rule with specified paramters, in the context of a fund
+    /// @return True if the rule passes
+    /// @dev A fund's PolicyManager is always the sender
+    function validateRule(bytes calldata)
+        external
+        view
+        override
+        onlyPolicyManager
+        returns (bool)
+    {
+        uint256 ownedAssetsCount = Vault(payable(__getVault())).getOwnedAssets().length;
+        return ownedAssetsCount <= policyManagerToMaxPositions[msg.sender];
     }
 }

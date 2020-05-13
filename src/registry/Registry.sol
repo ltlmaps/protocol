@@ -3,6 +3,7 @@ pragma experimental ABIEncoderV2;
 
 import "../dependencies/DSAuth.sol";
 import "../dependencies/libs/EnumerableSet.sol";
+import "../fund/policies/IPolicy.sol";
 
 /// @title Registry Contract
 /// @author Melon Council DAO <security@meloncoucil.io>
@@ -48,9 +49,9 @@ contract Registry is DSAuth {
 
     event NativeAssetChanged (address nativeAsset);
 
-    event PolicyAdded (address policy);
+    event PolicyAdded (address indexed policy, string indexed identifier);
 
-    event PolicyRemoved (address policy);
+    event PolicyRemoved (address indexed policy, string indexed identifier);
 
     event PriceSourceChanged (address priceSource);
 
@@ -62,6 +63,7 @@ contract Registry is DSAuth {
     EnumerableSet.AddressSet private fees;
     EnumerableSet.AddressSet private integrationAdapters;
     EnumerableSet.AddressSet private policies;
+    mapping (bytes32 => bool) private policyIdentifierIsRegistered;
 
     // Derivatives (tokens representing underlying assets, e.g,. cDai)
     mapping (address => address) public derivativeToPriceSource;
@@ -205,9 +207,12 @@ contract Registry is DSAuth {
     function deregisterPolicy(address _policy) external auth {
         require(policyIsRegistered(_policy), "deregisterPolicy: _policy is not registered");
 
-        EnumerableSet.remove(policies, _policy);
+        string memory identifier = IPolicy(_policy).identifier();
 
-        emit PolicyRemoved(_policy);
+        EnumerableSet.remove(policies, _policy);
+        policyIdentifierIsRegistered[keccak256(bytes(identifier))] = false;
+
+        emit PolicyRemoved(_policy, identifier);
     }
 
     /// @notice Get all registered policies
@@ -221,9 +226,32 @@ contract Registry is DSAuth {
     function registerPolicy(address _policy) external auth {
         require(!policyIsRegistered(_policy), "registerPolicy: _policy already registered");
 
-        EnumerableSet.add(policies, _policy);
+        IPolicy policy = IPolicy(_policy);
+        require(
+            policy.policyHook() != IPolicyManager.PolicyHook.None,
+            "registerPolicy: PolicyHook must be defined in the policy"
+        );
+        require(
+            policy.policyHookExecutionTime() != IPolicyManager.PolicyHookExecutionTime.None,
+            "registerPolicy: PolicyHookExecutionTime must be defined in the policy"
+        );
 
-        emit PolicyAdded(_policy);
+        // Plugins should only have their latest version registered
+        string memory identifier = policy.identifier();
+        require(
+            bytes(identifier).length != 0,
+            "registerPolicy: Identifier must be defined in the policy"
+        );
+        bytes32 identifierHash = keccak256(bytes(identifier));
+        require(
+            !policyIdentifierIsRegistered[identifierHash],
+            string(abi.encodePacked("registerPolicy: Policy with identifier exists: ", identifier))
+        );
+
+        EnumerableSet.add(policies, _policy);
+        policyIdentifierIsRegistered[identifierHash] = true;
+
+        emit PolicyAdded(_policy, identifier);
     }
 
     /// @notice Check whether a policy is registered
