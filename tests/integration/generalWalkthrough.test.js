@@ -9,12 +9,12 @@
  */
 
 import { BN, toWei } from 'web3-utils';
-import { deploy, call, send } from '~/deploy/utils/deploy-contract';
+import { call, send } from '~/deploy/utils/deploy-contract';
 import { partialRedeploy } from '~/deploy/scripts/deploy-system';
 import { BNExpDiv } from '~/tests/utils/BNmath';
 import getAccounts from '~/deploy/utils/getAccounts';
-import { CONTRACT_NAMES, POLICY_HOOKS, POLICY_HOOK_EXECUTION_TIMES } from '~/tests/utils/constants';
-import { stringToBytes } from '~/tests/utils/formatting';
+import { CONTRACT_NAMES } from '~/tests/utils/constants';
+import { encodeArgs, stringToBytes } from '~/tests/utils/formatting';
 import { investInFund, getFundComponents } from '~/tests/utils/fund';
 import { getEventFromLogs, getFunctionSignature } from '~/tests/utils/metadata';
 import { encodeOasisDexTakeOrderArgs } from '~/tests/utils/oasisDex';
@@ -25,7 +25,7 @@ let contracts;
 let offeredValue, wantedShares, amguAmount;
 let mln, weth, fundFactory, oasisDex, oasisDexAdapter, priceSource;
 let takeOrderFunctionSig;
-let priceTolerance, sharesRequestor, userWhitelist;
+let sharesRequestor, userWhitelist;
 let managementFee, performanceFee;
 let fund;
 
@@ -38,15 +38,13 @@ beforeAll(async () => {
   const deployed = await partialRedeploy(CONTRACT_NAMES.FUND_FACTORY);
   contracts = deployed.contracts;
 
-  userWhitelist = await deploy(CONTRACT_NAMES.USER_WHITELIST, [[]]);
-
   mln = contracts.MLN;
   weth = contracts.WETH;
   fundFactory = contracts.FundFactory;
   oasisDex = contracts.OasisDexExchange;
   oasisDexAdapter = contracts.OasisDexAdapter;
   priceSource = contracts.TestingPriceFeed;
-  priceTolerance = contracts.PriceTolerance;
+  userWhitelist = contracts.UserWhitelist;
   managementFee = contracts.ManagementFee;
   performanceFee = contracts.PerformanceFee;
   sharesRequestor = contracts.SharesRequestor;
@@ -72,12 +70,20 @@ beforeAll(async () => {
     rates: [toWei('0.02', 'ether'), toWei('0.2', 'ether')],
     periods: [0, 7776000], // 0 and 90 days
   };
+
+  const policies = {
+    contracts: [userWhitelist.options.address],
+    encodedSettings: [encodeArgs(['address[]'], [[deployer]])]
+  };
+
   const fundName = stringToBytes(`Test fund ${Date.now()}`, 32);
   await send(fundFactory, 'beginFundSetup', [
     fundName,
     fees.contracts,
     fees.rates,
     fees.periods,
+    policies.contracts,
+    policies.encodedSettings,
     [oasisDexAdapter.options.address],
     weth.options.address,
     [weth.options.address, mln.options.address],
@@ -109,27 +115,6 @@ beforeAll(async () => {
   takeOrderFunctionSig = getFunctionSignature(
     CONTRACT_NAMES.ORDER_TAKER,
     'takeOrder',
-  );
-  await send(
-    fund.policyManager,
-    'enablePolicy',
-    [
-      priceTolerance.options.address,
-      POLICY_HOOKS.CALL_ON_INTEGRATION,
-      POLICY_HOOK_EXECUTION_TIMES.POST_VALIDATE
-    ],
-    managerTxOpts
-  );
-
-  await send(
-    fund.policyManager,
-    'enablePolicy',
-    [
-      userWhitelist.options.address,
-      POLICY_HOOKS.BUY_SHARES,
-      POLICY_HOOK_EXECUTION_TIMES.PRE_VALIDATE
-    ],
-    managerTxOpts
   );
 });
 
@@ -163,13 +148,19 @@ test('Buying shares (initial investment) fails for user not on whitelist', async
       [hub.options.address, weth.options.address, offeredValue, wantedShares],
       { ...investorTxOpts, value: amguAmount }
     )
-  ).rejects.toThrowFlexible("Rule evaluated to false");
+  ).rejects.toThrowFlexible("Rule evaluated to false: USER_WHITELIST");
 });
 
 test('Buying shares (initial investment) succeeds for whitelisted user with allowance', async () => {
-  const { hub, shares } = fund;
+  const { hub, policyManager, shares } = fund;
 
-  await send(userWhitelist, 'addToWhitelist', [investor], defaultTxOpts);
+  const encodedUserWhitelistArgs = encodeArgs(['address[]', 'address[]'], [[investor], []]);
+  await send(
+    policyManager,
+    'updatePolicySettings',
+    [userWhitelist.options.address, encodedUserWhitelistArgs],
+    managerTxOpts
+  );
 
   await send(
     sharesRequestor,

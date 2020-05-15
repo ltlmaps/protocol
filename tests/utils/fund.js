@@ -115,6 +115,10 @@ export const setupFundWithParams = async ({
     rates: [],
     periods: [],
   },
+  policies = {
+    addresses: [],
+    encodedSettings: []
+  },
   initialInvestment = {
     contribAmount: 0,
     investor: undefined,
@@ -142,6 +146,8 @@ export const setupFundWithParams = async ({
       fees.addresses,
       fees.rates,
       fees.periods,
+      policies.addresses,
+      policies.encodedSettings,
       integrationAdapters,
       quoteToken,
       defaultTokens,

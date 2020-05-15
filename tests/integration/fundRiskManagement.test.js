@@ -9,13 +9,13 @@
  * @test TODO: A fund can only take an order for its current assets once max positions is reached
  */
 
-import { encodeFunctionSignature } from 'web3-eth-abi';
 import { BN, toWei } from 'web3-utils';
 import { partialRedeploy } from '~/deploy/scripts/deploy-system';
-import { call, deploy, send } from '~/deploy/utils/deploy-contract';
+import { call, send } from '~/deploy/utils/deploy-contract';
 import { BNExpMul, BNExpDiv } from '~/tests/utils/BNmath';
-import { CONTRACT_NAMES, POLICY_HOOKS, POLICY_HOOK_EXECUTION_TIMES } from '~/tests/utils/constants';
-import { setupInvestedTestFund } from '~/tests/utils/fund';
+import { CONTRACT_NAMES } from '~/tests/utils/constants';
+import { encodeArgs } from '~/tests/utils/formatting';
+import { setupFundWithParams } from '~/tests/utils/fund';
 import getAccounts from '~/deploy/utils/getAccounts';
 import {
   getEventFromLogs,
@@ -26,7 +26,10 @@ import { encodeOasisDexTakeOrderArgs } from '~/tests/utils/oasisDex';
 let deployer, manager;
 let defaultTxOpts, managerTxOpts;
 let takeOrderFunctionSig;
-let dai, knc, mln, weth, zrx, oasisDexExchange, oasisDexAdapter, priceSource, priceTolerance;
+let fundFactory, oasisDexAdapter, priceSource;
+let assetBlacklist, assetWhitelist, maxConcentration, maxPositions, priceTolerance;
+let dai, knc, mln, weth, zrx;
+let oasisDexExchange;
 let contracts;
 
 beforeAll(async () => {
@@ -43,9 +46,16 @@ beforeAll(async () => {
   weth = contracts.WETH;
   zrx = contracts.ZRX;
 
+  fundFactory = contracts.FundFactory;
   oasisDexExchange = contracts.OasisDexExchange;
   oasisDexAdapter = contracts.OasisDexAdapter;
   priceSource = contracts.TestingPriceFeed;
+
+  // Policies
+  assetBlacklist = contracts.AssetBlacklist;
+  assetWhitelist = contracts.AssetWhitelist;
+  maxPositions = contracts.MaxPositions;
+  maxConcentration = contracts.MaxConcentration;
   priceTolerance = contracts.PriceTolerance;
 
   takeOrderFunctionSig = getFunctionSignature(
@@ -85,75 +95,54 @@ beforeAll(async () => {
  * Fund #1: Take orders on Oasis Dex
  * Asset blacklist: KNC
  * Max concentration: 10%
- * Max positions: current number of fund positions + 1
- * Price tolerance: deployment price tolerance contract
+ * Max positions: 3
+ * Price tolerance: 10%
  */
 describe('Fund 1: Asset blacklist, price tolerance, max positions, max concentration', () => {
   let fund;
-  let assetBlacklist, maxConcentration, maxPositions;
   let priceToleranceVal, maxConcentrationVal;
 
   beforeAll(async () => {
-    fund = await setupInvestedTestFund(contracts, manager);
-    const { policyManager, vault } = fund;
-
-    assetBlacklist = await deploy(
-      CONTRACT_NAMES.ASSET_BLACKLIST,
-      [[knc.options.address]]
-    );
-    const currentPositions = (await call(vault, 'getOwnedAssets')).length;
-    maxPositions = await deploy(
-      CONTRACT_NAMES.MAX_POSITIONS,
-      [Number(currentPositions) + 2]
-    );
-    maxConcentration = await deploy(
-      CONTRACT_NAMES.MAX_CONCENTRATION,
-      [toWei('0.1', 'ether')],
-    );
-
-    await send(
-      policyManager,
-      'enablePolicy',
-      [
-        priceTolerance.options.address,
-        POLICY_HOOKS.CALL_ON_INTEGRATION,
-        POLICY_HOOK_EXECUTION_TIMES.POST_VALIDATE
-      ],
-      managerTxOpts
-    );
-    await send(
-      policyManager,
-      'enablePolicy',
-      [
+    const policies = {
+      addresses: [
         assetBlacklist.options.address,
-        POLICY_HOOKS.CALL_ON_INTEGRATION,
-        POLICY_HOOK_EXECUTION_TIMES.POST_VALIDATE
-      ],
-      managerTxOpts
-    );
-    await send(
-      policyManager,
-      'enablePolicy',
-      [
         maxPositions.options.address,
-        POLICY_HOOKS.CALL_ON_INTEGRATION,
-        POLICY_HOOK_EXECUTION_TIMES.POST_VALIDATE
-      ],
-      managerTxOpts
-    );
-    await send(
-      policyManager,
-      'enablePolicy',
-      [
         maxConcentration.options.address,
-        POLICY_HOOKS.CALL_ON_INTEGRATION,
-        POLICY_HOOK_EXECUTION_TIMES.POST_VALIDATE
+        priceTolerance.options.address
       ],
-      managerTxOpts
+      encodedSettings: [
+        encodeArgs(['address[]'], [[knc.options.address]]),
+        encodeArgs(['uint256'], [3]),
+        encodeArgs(['uint256'], [toWei('0.1', 'ether')]), // 10%
+        encodeArgs(['uint256'], [toWei('0.1', 'ether')]), // 10%
+      ]
+    };
+    fund = await setupFundWithParams({
+      defaultTokens: [weth.options.address],
+      integrationAdapters: [oasisDexAdapter.options.address],
+      initialInvestment: {
+        contribAmount: toWei('1', 'ether'),
+        investor: manager,
+        tokenContract: weth
+      },
+      manager,
+      policies: {
+        addresses: policies.addresses,
+        encodedSettings: policies.encodedSettings
+      },
+      quoteToken: weth.options.address,
+      fundFactory
+    });
+    maxConcentrationVal = await call(
+      maxConcentration,
+      'policyManagerToMaxConcentration',
+      [fund.policyManager.options.address]
     );
-
-    maxConcentrationVal = await call(maxConcentration, 'maxConcentration');
-    priceToleranceVal = await call(priceTolerance, 'tolerance');
+    priceToleranceVal = await call(
+      priceTolerance,
+      'policyManagerToPriceTolerance',
+      [fund.policyManager.options.address]
+    );
   });
 
   test('Confirm policies have been set', async () => {
@@ -228,7 +217,7 @@ describe('Fund 1: Asset blacklist, price tolerance, max positions, max concentra
           ],
           managerTxOpts,
         )
-      ).rejects.toThrowFlexible('Rule evaluated to false');
+      ).rejects.toThrowFlexible('Rule evaluated to false: ASSET_BLACKLIST');
     });
 
     test('Third party makes an order', async () => {
@@ -346,7 +335,7 @@ describe('Fund 1: Asset blacklist, price tolerance, max positions, max concentra
           ],
           managerTxOpts,
         )
-      ).rejects.toThrowFlexible('Rule evaluated to false');
+      ).rejects.toThrowFlexible('Rule evaluated to false: PRICE_TOLERANCE');
     });
 
     test('Third party makes an order', async () => {
@@ -518,7 +507,7 @@ describe('Fund 1: Asset blacklist, price tolerance, max positions, max concentra
           ],
           managerTxOpts,
         )
-      ).rejects.toThrowFlexible('Rule evaluated to false');
+      ).rejects.toThrowFlexible('Rule evaluated to false: MAX_CONCENTRATION');
     });
   });
 });
@@ -526,50 +515,41 @@ describe('Fund 1: Asset blacklist, price tolerance, max positions, max concentra
 /*
  * Fund #2: Trading on Oasis Dex
  * Asset whitelist: DAI, MLN, ZRX
- * Max positions: current number of fund positions + 1
+ * Max positions: 3
  */
 describe('Fund 2: Asset whitelist, max positions', () => {
   let fund;
-  let assetWhitelist, maxPositions;
 
   beforeAll(async () => {
-    const deployed = await partialRedeploy([CONTRACT_NAMES.FUND_FACTORY], true);
-    contracts = deployed.contracts;
-
-    fund = await setupInvestedTestFund(contracts, manager);
-    const { policyManager, vault } = fund;
-
-    assetWhitelist = await deploy(
-      CONTRACT_NAMES.ASSET_WHITELIST,
-      [[dai.options.address, mln.options.address, zrx.options.address]]
-    );
-    const currentPositions = (await call(vault, 'getOwnedAssets')).length;
-    const maxPositionsArg = Number(currentPositions) + 2;
-    maxPositions = await deploy(
-      CONTRACT_NAMES.MAX_POSITIONS,
-      [maxPositionsArg]
-    );
-
-    await send(
-      policyManager,
-      'enablePolicy',
-      [
+    const policies = {
+      addresses: [
         assetWhitelist.options.address,
-        POLICY_HOOKS.CALL_ON_INTEGRATION,
-        POLICY_HOOK_EXECUTION_TIMES.POST_VALIDATE
+        maxPositions.options.address
       ],
-      managerTxOpts
-    );
-    await send(
-      policyManager,
-      'enablePolicy',
-      [
-        maxPositions.options.address,
-        POLICY_HOOKS.CALL_ON_INTEGRATION,
-        POLICY_HOOK_EXECUTION_TIMES.POST_VALIDATE
-      ],
-      managerTxOpts
-    );
+      encodedSettings: [
+        encodeArgs(
+          ['address[]'],
+          [[dai.options.address, mln.options.address, zrx.options.address]]
+        ),
+        encodeArgs(['uint256'], [3])
+      ]
+    };
+    fund = await setupFundWithParams({
+      defaultTokens: [weth.options.address],
+      integrationAdapters: [oasisDexAdapter.options.address],
+      initialInvestment: {
+        contribAmount: toWei('1', 'ether'),
+        investor: manager,
+        tokenContract: weth
+      },
+      manager,
+      policies: {
+        addresses: policies.addresses,
+        encodedSettings: policies.encodedSettings
+      },
+      quoteToken: weth.options.address,
+      fundFactory
+    });
   });
 
   test('Confirm policies have been set', async () => {
@@ -597,7 +577,7 @@ describe('Fund 2: Asset whitelist, max positions', () => {
 
       badMakerAsset = knc.options.address;
       const badMakerToWethAssetRate = new BN(
-        (await call(priceSource, 'getPrice', [badMakerAsset]))[0]
+        (await call(priceSource, 'getLiveRate', [badMakerAsset, weth.options.address]))[0]
       );
       badMakerQuantity = BNExpDiv(
         new BN(takerQuantity),
@@ -651,7 +631,7 @@ describe('Fund 2: Asset whitelist, max positions', () => {
           ],
           managerTxOpts,
         )
-      ).rejects.toThrowFlexible('Rule evaluated to false');
+      ).rejects.toThrowFlexible('Rule evaluated to false: ASSET_WHITELIST');
     });
 
     test('Third party makes an order', async () => {
@@ -760,7 +740,11 @@ describe('Fund 2: Asset whitelist, max positions', () => {
     test('Good take order 1: final allowed position', async () => {
       const { vault } = fund;
 
-      const maxPositionsVal = await call(maxPositions, 'maxPositions');
+      const maxPositionsVal = await call(
+        maxPositions,
+        'policyManagerToMaxPositions',
+        [fund.policyManager.options.address]
+      );
 
       const preOwnedAssetsLength = (await call(vault, 'getOwnedAssets')).length;
       expect(Number(preOwnedAssetsLength)).toEqual(Number(maxPositionsVal) - 1);
@@ -826,7 +810,7 @@ describe('Fund 2: Asset whitelist, max positions', () => {
           ],
           managerTxOpts,
         )
-      ).rejects.toThrowFlexible('Rule evaluated to false');
+      ).rejects.toThrowFlexible('Rule evaluated to false: MAX_POSITIONS');
     });
 
     test('Third party makes an order', async () => {

@@ -12,11 +12,7 @@ import { call, send } from '~/deploy/utils/deploy-contract';
 import getAccounts from '~/deploy/utils/getAccounts';
 
 import { BNExpMul } from '~/tests/utils/BNmath';
-import {
-  CONTRACT_NAMES,
-  POLICY_HOOKS,
-  POLICY_HOOK_EXECUTION_TIMES
-} from '~/tests/utils/constants';
+import { CONTRACT_NAMES } from '~/tests/utils/constants';
 import { getFunctionSignature } from '~/tests/utils/metadata';
 import { encodeTakeOrderArgs } from '~/tests/utils/formatting';
 import { increaseTime } from '~/tests/utils/rpc';
@@ -24,7 +20,7 @@ import { investInFund, setupInvestedTestFund } from '~/tests/utils/fund';
 
 let deployer, manager, investor;
 let defaultTxOpts, managerTxOpts, investorTxOpts;
-let engine, mln, fund, weth, engineAdapter, priceSource, priceTolerance;
+let engine, mln, fund, weth, engineAdapter, priceSource;
 let contracts;
 let mlnPrice, makerQuantity, takerQuantity;
 let takeOrderSignature, takeOrderSignatureBytes;
@@ -40,7 +36,6 @@ beforeAll(async () => {
   engine = contracts.Engine;
   engineAdapter = contracts.EngineAdapter;
   priceSource = contracts.TestingPriceFeed;
-  priceTolerance = contracts.PriceTolerance;
   mln = contracts.MLN;
   weth = contracts.WETH;
 
@@ -81,18 +76,6 @@ test('Setup a fund with amgu charged to seed Melon Engine', async () => {
   // TODO: Need to calculate this in fund.js
   const amguTxValue = toWei('10', 'ether');
   fund = await setupInvestedTestFund(contracts, manager, amguTxValue);
-  const { policyManager, vault } = fund;
-
-  await send(
-    policyManager,
-    'enablePolicy',
-    [
-      priceTolerance.options.address,
-      POLICY_HOOKS.CALL_ON_INTEGRATION,
-      POLICY_HOOK_EXECUTION_TIMES.POST_VALIDATE
-    ],
-    managerTxOpts
-  );
 });
 
 test('Invest in fund with enough MLN to buy desired ETH from engine', async () => {

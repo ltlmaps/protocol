@@ -6,18 +6,20 @@
  * @test Whitelist policy allows whitelisted user to participate
  */
 
-import { encodeFunctionSignature } from 'web3-eth-abi';
 import { toWei } from 'web3-utils';
-import { call, send } from '~/deploy/utils/deploy-contract';
+import { call } from '~/deploy/utils/deploy-contract';
 import { partialRedeploy } from '~/deploy/scripts/deploy-system';
-import { deploy } from '~/deploy/utils/deploy-contract';
-import { CONTRACT_NAMES, POLICY_HOOKS, POLICY_HOOK_EXECUTION_TIMES } from '~/tests/utils/constants';
+import { CONTRACT_NAMES } from '~/tests/utils/constants';
+import { encodeArgs } from '~/tests/utils/formatting';
 import { investInFund, setupFundWithParams } from '~/tests/utils/fund';
 import getAccounts from '~/deploy/utils/getAccounts';
 import { getFunctionSignature } from '~/tests/utils/metadata';
 
 let deployer, manager, investor, badInvestor;
 let defaultTxOpts, managerTxOpts, investorTxOpts, badInvestorTxOpts;
+let fundFactory, priceSource;
+let userWhitelist;
+let mln, weth;
 let buySharesFunctionSig;
 
 beforeAll(async () => {
@@ -27,6 +29,15 @@ beforeAll(async () => {
   investorTxOpts = { ...defaultTxOpts, from: investor };
   badInvestorTxOpts = { ...defaultTxOpts, from: badInvestor };
 
+  const deployed = await partialRedeploy([CONTRACT_NAMES.FUND_FACTORY]);
+  const contracts = deployed.contracts;
+
+  mln = contracts.MLN;
+  weth = contracts.WETH;
+  priceSource = contracts.TestingPriceFeed;
+  fundFactory = contracts.FundFactory;
+  userWhitelist = contracts.UserWhitelist;
+
   buySharesFunctionSig = getFunctionSignature(
     CONTRACT_NAMES.SHARES,
     'buyShares',
@@ -35,20 +46,15 @@ beforeAll(async () => {
 
 describe('Fund 1: user whitelist', () => {
   let offeredValue, wantedShares;
-  let mln, weth, priceSource, userWhitelist;
   let fund;
 
   beforeAll(async () => {
-    const deployed = await partialRedeploy([CONTRACT_NAMES.FUND_FACTORY]);
-    const contracts = deployed.contracts;
-
-    mln = contracts.MLN;
-    weth = contracts.WETH;
-    priceSource = contracts.TestingPriceFeed;
-    const fundFactory = contracts.FundFactory;
-
-    userWhitelist = await deploy(CONTRACT_NAMES.USER_WHITELIST, [[investor]]);
-
+    const policies = {
+      addresses: [userWhitelist.options.address],
+      encodedSettings: [
+        encodeArgs(['address[]'], [[manager, investor]])
+      ]
+    };
     fund = await setupFundWithParams({
       defaultTokens: [mln.options.address, weth.options.address],
       initialInvestment: {
@@ -57,20 +63,13 @@ describe('Fund 1: user whitelist', () => {
         tokenContract: weth
       },
       manager,
+      policies: {
+        addresses: policies.addresses,
+        encodedSettings: policies.encodedSettings
+      },
       quoteToken: weth.options.address,
       fundFactory
     });
-
-    await send(
-      fund.policyManager,
-      'enablePolicy',
-      [
-        userWhitelist.options.address,
-        POLICY_HOOKS.BUY_SHARES,
-        POLICY_HOOK_EXECUTION_TIMES.PRE_VALIDATE
-      ],
-      managerTxOpts
-    );
 
     // Investment params
     wantedShares = toWei('1', 'ether');
@@ -105,7 +104,7 @@ describe('Fund 1: user whitelist', () => {
           tokenPrices: [toWei('1', 'ether')]
         }
       })
-    ).rejects.toThrowFlexible("Rule evaluated to false");
+    ).rejects.toThrowFlexible("Rule evaluated to false: USER_WHITELIST");
   });
 
   test('Good request investment: user is whitelisted', async () => {
