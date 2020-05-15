@@ -68,7 +68,7 @@ contract Shares is IShares, TokenUser, Spoke, SharesToken {
 
     /// @notice Buy shares on behalf of a specified user
     /// @dev Only callable by the SharesRequestor associated with the Registry
-    /// @dev Rewards all fees via getSharesCostInAsset
+    /// Settles Milestone fees via getSharesCostInAsset
     /// @param _buyer The for which to buy shares
     /// @param _investmentAsset The asset with which to buy shares
     /// @param _sharesQuantity The desired amount of shares
@@ -100,16 +100,6 @@ contract Shares is IShares, TokenUser, Spoke, SharesToken {
         );
     }
 
-    // TODO: remove this after FeeManager arch changes
-    function createFor(address _who, uint256 _amount) external override {
-        require(
-            msg.sender == address(__getFeeManager()),
-            "Only FeeManager can call this function"
-        );
-
-        _mint(_who, _amount);
-    }
-
     /// @notice Disable the buying of shares with specific assets
     /// @param _assets The assets for which to disable the buying of shares
     function disableSharesInvestmentAssets(address[] calldata _assets) external onlyManager {
@@ -139,11 +129,8 @@ contract Shares is IShares, TokenUser, Spoke, SharesToken {
     }
 
     /// @notice Redeem all of the sender's shares for a proportionate slice of the fund's assets
-    /// @dev Rewards all fees prior to redemption
     function redeemShares() external {
-        // Duplicates logic further down call stack, but need to assure all outstanding shares are
-        // assigned for fund manager (and potentially other fee recipients in the future)
-        __getFeeManager().rewardAllFees();
+        __payoutSellSharesFees(msg.sender, balanceOf(msg.sender));
         __redeemShares(balanceOf(msg.sender), false);
     }
 
@@ -151,7 +138,7 @@ contract Shares is IShares, TokenUser, Spoke, SharesToken {
     /// @dev _bypassFailure is set to true, the user will lose their claim to any assets for
     /// which the transfer function fails.
     function redeemSharesEmergency() external {
-        __getFeeManager().rewardAllFees();
+        __payoutSellSharesFees(msg.sender, balanceOf(msg.sender));
         __redeemShares(balanceOf(msg.sender), true);
     }
 
@@ -159,6 +146,7 @@ contract Shares is IShares, TokenUser, Spoke, SharesToken {
     /// for a proportionate slice of the fund's assets
     /// @param _sharesQuantity Number of shares
     function redeemSharesQuantity(uint256 _sharesQuantity) external {
+         __payoutSellSharesFees(msg.sender, _sharesQuantity);
         __redeemShares(_sharesQuantity, false);
     }
 
@@ -191,7 +179,7 @@ contract Shares is IShares, TokenUser, Spoke, SharesToken {
     }
 
     /// @notice Calculate the cost for a given number of shares in the fund, in a given asset
-    /// @dev Rewards all fees prior to calculations
+    /// @dev Pays all milestone fees prior to calculations
     /// @param _sharesQuantity Number of shares
     /// @param _asset Asset in which to calculate share cost
     /// @return The amount of the asset required to buy the quantity of shares
@@ -200,10 +188,10 @@ contract Shares is IShares, TokenUser, Spoke, SharesToken {
         override
         returns (uint256)
     {
-        __getFeeManager().rewardAllFees();
+        // First, need to payout all due milestone-based fees to fully dilute supply
+        payoutMilestoneFeesForFund();
 
         uint256 denominatedSharePrice;
-        // TODO: Confirm that this is correct behavior when shares go above 0 and then return to 0 (all shares cashed out)
         if (totalSupply() == 0) {
             denominatedSharePrice = 10 ** uint256(ERC20WithFields(DENOMINATION_ASSET).decimals());
         }
@@ -235,6 +223,76 @@ contract Shares is IShares, TokenUser, Spoke, SharesToken {
         return EnumerableSet.contains(sharesInvestmentAssets, _asset);
     }
 
+    /// @notice Pays due milestone-based fees to the fund manager.
+    /// @dev Mints new shares. Callable by anyone.
+    function payoutMilestoneFeesForFund() public {
+        uint256 sharesDue = __getFeeManager().settleFeesForFund(IFeeManager.FeeHook.Milestone);
+        if (sharesDue > 0) {
+            _mint(__getHub().MANAGER(), sharesDue);
+        }
+    }
+
+    // PRIVATE FUNCTIONS
+
+    /// @notice Enable assets with which to buy shares
+    function __enableSharesInvestmentAssets (address[] memory _assets) private {
+        for (uint256 i = 0; i < _assets.length; i++) {
+            require(
+                !isSharesInvestmentAsset(_assets[i]),
+                "__enableSharesInvestmentAssets: Asset is already enabled"
+            );
+            require(
+                __getRegistry().assetIsRegistered(_assets[i]),
+                "__enableSharesInvestmentAssets: Asset not in Registry"
+            );
+            EnumerableSet.add(sharesInvestmentAssets, _assets[i]);
+        }
+        emit SharesInvestmentAssetsEnabled(_assets);
+    }
+
+    /// @dev This charges both Milestone fees and SellShares fee types:
+    /// 1. Payout all Milestone fees that have matured (inflates shares by minting to manager)
+    /// 2. Payout investor's share of non-matured Milestone fees (reallocates shares from investor to manager)
+    /// 3. Payout SellShare fees for investor (reallocates shares from investor to manager)
+    /// Uses try/catch, because if fees cause an error, still need to guarantee redeemability.
+    function __payoutSellSharesFees(address _redeemer, uint256 _sharesQuantity) private {
+        try this.payoutMilestoneFeesForFund() {}
+        catch {}
+
+        address manager = __getHub().MANAGER();
+        if (_redeemer != manager) {
+            uint256 totalSharesDue;
+            // Milestone fees
+            try __getFeeManager().settleFeesForInvestor(
+                IFeeManager.FeeHook.Milestone,
+                _redeemer,
+                _sharesQuantity
+            )
+                returns (uint256 sharesDue)
+            {
+                totalSharesDue = sharesDue;
+            }
+            catch {}
+
+            // SellShares fees
+            try __getFeeManager().settleFeesForInvestor(
+                IFeeManager.FeeHook.SellShares,
+                _redeemer,
+                _sharesQuantity
+            )
+                returns (uint256 sharesDue)
+            {
+                totalSharesDue = add(totalSharesDue, sharesDue);
+            }
+            catch {}
+
+            if (totalSharesDue > 0 && balanceOf(_redeemer) >= totalSharesDue) {
+                _burn(_redeemer, totalSharesDue);
+                _mint(manager, totalSharesDue);
+            }
+        }
+    }
+
     /// @notice Redeem a specified quantity of the sender's shares
     /// for a proportionate slice of the fund's assets
     /// @dev If _bypassFailure is set to true, the user will lose their claim to any assets for
@@ -251,8 +309,6 @@ contract Shares is IShares, TokenUser, Spoke, SharesToken {
         IVault vault = __getVault();
         address[] memory payoutAssets = vault.getOwnedAssets();
         require(payoutAssets.length > 0, "__redeemShares: payoutAssets is empty");
-
-        __getFeeManager().rewardAllFees();
 
         // Destroy the shares
         uint256 sharesSupply = totalSupply();
@@ -290,22 +346,6 @@ contract Shares is IShares, TokenUser, Spoke, SharesToken {
             payoutAssets,
             payoutQuantities
         );
-    }
-
-    /// @notice Enable assets with which to buy shares
-    function __enableSharesInvestmentAssets (address[] memory _assets) private {
-        for (uint256 i = 0; i < _assets.length; i++) {
-            require(
-                !isSharesInvestmentAsset(_assets[i]),
-                "__enableSharesInvestmentAssets: Asset is already enabled"
-            );
-            require(
-                __getRegistry().assetIsRegistered(_assets[i]),
-                "__enableSharesInvestmentAssets: Asset not in Registry"
-            );
-            EnumerableSet.add(sharesInvestmentAssets, _assets[i]);
-        }
-        emit SharesInvestmentAssetsEnabled(_assets);
     }
 }
 

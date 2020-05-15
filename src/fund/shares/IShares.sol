@@ -4,7 +4,6 @@ pragma solidity 0.6.8;
 /// @author Melon Council DAO <security@meloncoucil.io>
 interface IShares {
     function buyShares(address, address, uint256) external returns (uint256);
-    function createFor(address, uint256) external; // TODO: remove when change FeeManager arch
     function getSharesCostInAsset(uint256, address) external returns (uint256);
     function isSharesInvestmentAsset(address) external view returns (bool);
 }
