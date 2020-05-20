@@ -27,6 +27,10 @@ abstract contract FundRouterMixin {
         return IHub(_hub).shares();
     }
 
+    function __getValueInterpreter(address _hub) internal view returns (address) {
+        return IRegistry(__getRegistry(_hub)).valueInterpreter();
+    }
+
     function __getVault(address _hub) internal view returns (address) {
         return IHub(_hub).vault();
     }

@@ -5,7 +5,7 @@ import "../../hub/Spoke.sol";
 import "../../shares/Shares.sol";
 import "../../vault/Vault.sol";
 import "../../../dependencies/DSMath.sol";
-import "../../../prices/IPriceSource.sol";
+import "../../../prices/IValueInterpreter.sol";
 
 /// @title MaxConcentration Contract
 /// @author Melon Council DAO <security@meloncoucil.io>
@@ -38,10 +38,11 @@ contract MaxConcentration is TradingSignatures, DSMath {
 
         uint totalGav = shares.calcGav();
 
-        uint256 assetGav = IPriceSource(IRegistry(hub.REGISTRY()).priceSource()).convertQuantity(
-            Vault(payable(hub.vault())).assetBalances(takerToken),
-            takerToken,
-            denominationAsset
+        (uint256 assetGav,) = IValueInterpreter(IRegistry(hub.REGISTRY()).valueInterpreter())
+            .calcCanonicalAssetValue(
+                takerToken,
+                Vault(payable(hub.vault())).assetBalances(takerToken),
+                denominationAsset
         );
 
         uint concentration = __calcConcentration(assetGav, totalGav);

@@ -3,8 +3,6 @@ pragma experimental ABIEncoderV2;
 
 import "../dependencies/DSAuth.sol";
 import "../dependencies/libs/EnumerableSet.sol";
-import "../fund/hub/ISpoke.sol";
-import "../dependencies/token/IERC20.sol";
 
 /// @title Registry Contract
 /// @author Melon Council DAO <security@meloncoucil.io>
@@ -58,6 +56,8 @@ contract Registry is DSAuth {
 
     event SharesRequestorChanged(address sharesRequestor);
 
+    event ValueInterpreterChanged(address valueInterpreter);
+
     EnumerableSet.AddressSet private assets;
     EnumerableSet.AddressSet private fees;
     EnumerableSet.AddressSet private integrationAdapters;
@@ -86,6 +86,7 @@ contract Registry is DSAuth {
     address public mlnToken;
     address public nativeAsset;
     address public sharesRequestor;
+    address public valueInterpreter;
 
     constructor(address _postDeployOwner) public {
         incentive = 10 finney;
@@ -380,5 +381,12 @@ contract Registry is DSAuth {
     function setSharesRequestor(address _sharesRequestor) external auth {
         sharesRequestor = _sharesRequestor;
         emit SharesRequestorChanged(_sharesRequestor);
+    }
+
+    /// @notice Set the valueInterpreter storage var
+    /// @param _valueInterpreter The ValueInterpreter contract to set
+    function setValueInterpreter(address _valueInterpreter) external auth {
+        valueInterpreter = _valueInterpreter;
+        emit ValueInterpreterChanged(_valueInterpreter);
     }
 }
