@@ -4,6 +4,7 @@ import { call, fetchContract, send } from '~/deploy/utils/deploy-contract';
 
 import { BNExpDiv } from '~/tests/utils/BNmath';
 import { CONTRACT_NAMES } from '~/tests/utils/constants';
+import { encodeArgs } from '~/tests/utils/formatting';
 import getAccounts from '~/deploy/utils/getAccounts';
 import { getEventFromLogs } from '~/tests/utils/metadata';
 import { delay } from '~/tests/utils/time';
@@ -112,8 +113,7 @@ export const setupFundWithParams = async ({
   defaultTokens,
   fees = {
     addresses: [],
-    rates: [],
-    periods: [],
+    encodedSettings: []
   },
   policies = {
     addresses: [],
@@ -144,8 +144,7 @@ export const setupFundWithParams = async ({
     [
       name,
       fees.addresses,
-      fees.rates,
-      fees.periods,
+      fees.encodedSettings,
       policies.addresses,
       policies.encodedSettings,
       integrationAdapters,
@@ -155,10 +154,10 @@ export const setupFundWithParams = async ({
     managerTxOpts
   );
 
-  await send(fundFactory, 'createFeeManager', [], managerTxOptsWithAmgu);
-  await send(fundFactory, 'createPolicyManager', [], managerTxOptsWithAmgu);
   await send(fundFactory, 'createShares', [], managerTxOptsWithAmgu);
   await send(fundFactory, 'createVault', [], managerTxOptsWithAmgu);
+  await send(fundFactory, 'createFeeManager', [], managerTxOptsWithAmgu);
+  await send(fundFactory, 'createPolicyManager', [], managerTxOptsWithAmgu);
   const res = await send(fundFactory, 'completeFundSetup', [], managerTxOptsWithAmgu);
 
   const hubAddress = getEventFromLogs(
@@ -188,13 +187,20 @@ export const setupInvestedTestFund = async (contracts, manager, amguTxValue = nu
   const weth = contracts.WETH;
   const mln = contracts.MLN;
   const fundFactory = contracts.FundFactory;
+  
+  // Fees
   const performanceFee = contracts.PerformanceFee;
-  const managementFee = contracts.ManagementFee;
-
-  const managementFeeRate = toWei('.02', 'ether');
   const performanceFeeRate = toWei('.2', 'ether');
-  const managementFeePeriod = 0;
   const performanceFeePeriod = 60 * 60 * 24 * 90; // 90 days
+  const managementFee = contracts.ManagementFee;
+  const managementFeeRate = toWei('.02', 'ether');
+  const fees = {
+    addresses: [performanceFee.options.address, managementFee.options.address],
+    encodedSettings: [
+      encodeArgs(['uint256', 'uint256'], [performanceFeeRate, performanceFeePeriod]),
+      encodeArgs(['uint256'], [managementFeeRate])
+    ]
+  };
 
   let adapterAddresses = [
     contracts.EngineAdapter.options.address,
@@ -210,9 +216,8 @@ export const setupInvestedTestFund = async (contracts, manager, amguTxValue = nu
     defaultTokens: [mln.options.address, weth.options.address],
     integrationAdapters: adapterAddresses,
     fees: {
-      addresses: [managementFee.options.address, performanceFee.options.address],
-      rates: [managementFeeRate, performanceFeeRate],
-      periods: [managementFeePeriod, performanceFeePeriod],
+      addresses: fees.addresses,
+      encodedSettings: fees.encodedSettings
     },
     initialInvestment: {
       contribAmount: toWei('1', 'ether'),
