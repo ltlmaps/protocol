@@ -13,19 +13,13 @@ abstract contract OrderTaker is OrderFiller, TradingSignatures {
     /// @dev Synchronously handles the responsibilities of takeOrder:
     /// - Validate user inputs
     /// - Prepare a formatted list of assets and their expected fill amounts
-    /// - Fill an order on the _targetExchange (with validateAndFinalizeFilledOrder)
-    /// @param _targetExchange Order maker
+    /// - Fill an order (with validateAndFinalizeFilledOrder)
     /// @param _encodedArgs Encoded parameters passed from client side
-    function takeOrder (
-        address _targetExchange,
-        bytes memory _encodedArgs
-    )
-        public
-    {
+    function takeOrder (bytes memory _encodedArgs) public {
         (
             address[6] memory riskManagementAddresses,
             uint256[3] memory riskManagementValues
-        ) = __extractTakeOrderRiskManagementArgs(_targetExchange, _encodedArgs);
+        ) = __extractTakeOrderRiskManagementArgs(_encodedArgs);
 
         // TODO: OasisDex identifier is not 0x0
         address policyManagerAddress = IHub(ISpoke(address(this)).HUB()).policyManager();
@@ -36,28 +30,21 @@ abstract contract OrderTaker is OrderFiller, TradingSignatures {
                 riskManagementAddresses[1],
                 riskManagementAddresses[2],
                 riskManagementAddresses[3],
-                _targetExchange
+                address(0) // temp placeholder, as this is no longer validated here in the new policy manager PR
             ],
             riskManagementValues,
             0x0
         );
 
-        __validateTakeOrderParams(
-            _targetExchange,
-            _encodedArgs
-        );
+        __validateTakeOrderParams(_encodedArgs);
 
         (
             address[] memory fillAssets,
             uint256[] memory fillExpectedAmounts,
             address[] memory fillApprovalTargets
-        ) = __formatFillTakeOrderArgs(
-            _targetExchange,
-            _encodedArgs
-        );
+        ) = __formatFillTakeOrderArgs(_encodedArgs);
 
         __fillTakeOrder(
-            _targetExchange,
             _encodedArgs,
             __encodeOrderFillData(fillAssets, fillExpectedAmounts, fillApprovalTargets)
         );
@@ -69,7 +56,7 @@ abstract contract OrderTaker is OrderFiller, TradingSignatures {
                 riskManagementAddresses[1],
                 riskManagementAddresses[2],
                 riskManagementAddresses[3],
-                _targetExchange
+                address(0) // temp placeholder, as this is no longer validated here in the new policy manager PR
             ],
             riskManagementValues,
             0x0
@@ -91,10 +78,7 @@ abstract contract OrderTaker is OrderFiller, TradingSignatures {
     /// - [0] Maker asset amount
     /// - [1] Taker asset amount
     /// - [2] Taker asset fill amount
-    function __extractTakeOrderRiskManagementArgs(
-        address _targetExchange,
-        bytes memory _encodedArgs
-    )
+    function __extractTakeOrderRiskManagementArgs(bytes memory _encodedArgs)
         internal
         view
         virtual
@@ -105,11 +89,7 @@ abstract contract OrderTaker is OrderFiller, TradingSignatures {
     /// @dev Include the `validateAndFinalizeFilledOrder` modifier
     /// @param _encodedArgs Encoded parameters passed from client side
     /// @param _fillData Encoded data used by the OrderFiller
-    function __fillTakeOrder(
-        address _targetExchange,
-        bytes memory _encodedArgs,
-        bytes memory _fillData
-    )
+    function __fillTakeOrder(bytes memory _encodedArgs, bytes memory _fillData)
         internal
         virtual;
 
@@ -119,10 +99,7 @@ abstract contract OrderTaker is OrderFiller, TradingSignatures {
     /// @return fillAssets_ Addresses of filled assets
     /// @return fillExpectedAmounts_ Expected amounts of asset fills
     /// @return fillApprovalTargets_ Targets to approve() for asset fills
-    function __formatFillTakeOrderArgs(
-        address _targetExchange,
-        bytes memory _encodedArgs
-    )
+    function __formatFillTakeOrderArgs(bytes memory _encodedArgs)
         internal
         view
         virtual
@@ -135,10 +112,7 @@ abstract contract OrderTaker is OrderFiller, TradingSignatures {
     /// @notice Reserved function for validating the parameters of a takeOrder call
     /// @param _encodedArgs Encoded parameters passed from client side
     /// @dev Use this to perform validation of takeOrder's inputs
-    function __validateTakeOrderParams(
-        address _targetExchange,
-        bytes memory _encodedArgs
-    )
+    function __validateTakeOrderParams(bytes memory _encodedArgs)
         internal
         view
         virtual;
